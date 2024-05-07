@@ -25,7 +25,40 @@ dcchannel = None
 # Initialize Telegram bot
 telecordTG = AsyncTeleBot(TELEGRAM_TOKEN)
 
-
+async def upload_file(session, url):
+    async with session.get(url) as response:
+        response.raise_for_status()
+        content = await response.read()
+        content_type = response.headers.get('Content-Type', '').lower()
+        # Upload the file based on its content type
+        if content_type.startswith('image'):
+            method = 'sendPhoto'
+        elif content_type.startswith('audio'):
+            method = 'sendAudio'
+        elif content_type.startswith('video'):
+            method = 'sendVideo'
+        elif content_type.startswith('application'):
+            method = 'sendDocument'
+        else:
+            method = None
+        if method:
+            file = aiohttp.FormData()
+            file.add_field('file', content, filename='file')
+            async with session.post(f'https://api.telegram.org/bot{bot.token}/{method}?chat_id={chatID}', data=file) as upload_response:
+                upload_data = await upload_response.json()
+                print(upload_data)
+                if method == 'sendPhoto':
+                    file_id = upload_data['result']['photo'][-1]['file_id']
+                else:
+                    file_id = upload_data['result']['file_id']
+                return file_id
+            
+async def download_file_size(session, url):
+    async with session.get(url) as response:
+        response.raise_for_status()
+        content = await response.read()
+        return len(content), content
+    
 # Event handler for Discord bot when it is ready
 @telecordDC.event
 async def on_ready():
@@ -68,7 +101,7 @@ async def on_message(message):
         await forward_to_telegram(message, replied_message)
 
 def escapeMD(text):
-    markdown_symbols = ['-', '|', '#', '+']
+    markdown_symbols = ['-', '|', '#', '+', '.']
     escaped_text = ""
 
     for char in text:
@@ -92,6 +125,39 @@ async def forward_to_telegram(message, replied_message):
                     rcontent = escape(replied_message.content[:50]) + "..."
                 author = embed.author.name
             else:
+                media_group = []
+                if message.attachments:
+                    async with aiohttp.ClientSession() as session:
+                        tasks = [download_file_size(session, attachment.url) for attachment in message.attachments]
+                        results = await asyncio.gather(*tasks)
+                    for size, content in results:
+                        if '.pdf' in attachment.url:
+                            if size <= 50 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaDocument(content))
+                        elif '.mp3' in attachment.url or '.m4a' in attachment.url:
+                            if size <= 50 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaAudio(content))
+                        elif '.mov' in attachment.url:
+                            if size <= 50 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaVideo(content))
+                        elif '.mp4' in attachment.url:
+                            if size <= 50 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaVideo(content))
+                        elif '.jpeg' in attachment.url or '.jpg' in attachment.url:
+                            if size <= 10 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaPhoto(content))
+                        elif '.png' in attachment.url:
+                            if size <= 10 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaPhoto(content))
+                        elif '.gif' in attachment.url:
+                            if size <= 10 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaPhoto(content))
+                        elif '.webp' in attachment.url:
+                            if size <= 10 * 1024 * 1024:
+                            	media_group.append(telebot.types.InputMediaPhoto(content))
+                        else:
+                            if size <= 50 * 1024 * 1024:
+                        		media_group.append(telebot.types.InputFile(content))
                 if len(message.content)>60:
                     rcontent = escape(replied_message.content[:50]) + "..."
                 else:
