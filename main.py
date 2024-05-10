@@ -128,15 +128,12 @@ async def on_message(message):
         await forward_to_telegram(message, replied_message)
 
 
-
-
-
-
-
 # Function to forward a Discord message to Telegram
 async def forward_to_telegram(message, replied_message):
     try:
         header = ""
+
+        # Check if message is a reply
         if replied_message:
             if replied_message.embeds:
                 embed = replied_message.embeds[0]
@@ -151,6 +148,8 @@ async def forward_to_telegram(message, replied_message):
                     rcontent = escape(replied_message.content)
                 author = replied_message.author.name
             header = f">*{escape(author)}:* {rcontent}\n⤷ "
+
+        # Check if message has any photos, videos, etc
         if message.attachments:
             media_group = []
             try:
@@ -178,12 +177,20 @@ async def forward_to_telegram(message, replied_message):
             except:
                 traceback.print_exc()
                 pass
+
+        # Continue framing the message if it don't have any attachments
         header = (
             header
             + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
         )
+
+        # Check if message has any emoji, mentions for channels, roles or members
         msgcontent = getRtext(message)
+
+        # Check if message has any emoji
         if isinstance(msgcontent, list):
+
+            # Check if message has single emoji
             if len(msgcontent) == 1:
                 header = header + f"\n`{message.id}`"
                 caption = escapeMD(header)
@@ -202,6 +209,8 @@ async def forward_to_telegram(message, replied_message):
                         parse_mode="markdownv2",
                     )
                 return
+
+            # Send multiple emojis as an album
             media_group = []
             for url in msgcontent:
                 if ".png" in url:
@@ -215,6 +224,8 @@ async def forward_to_telegram(message, replied_message):
             )
             await telecordTG.send_media_group(TELEGRAM_CHAT_ID, media_group)
             return
+
+        # Check if message has any discord GIF
         if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
             if "tenor" in msgcontent:
                 msgcontent = await get_direct_gif_url(msgcontent.strip())
@@ -225,6 +236,7 @@ async def forward_to_telegram(message, replied_message):
             )
             return
 
+        # Frame the message without any attachments
         text = f"{escape(msgcontent)}\n\n`{message.id}`"
         content = header + text
         content = escapeMD(content)
