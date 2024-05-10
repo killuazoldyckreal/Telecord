@@ -19,7 +19,10 @@ Telecord is a Python script that facilitates communication between Discord and T
 ## Dependencies
 
 - [discord.py](https://pypi.org/project/discord.py/): Discord API wrapper for Python.
-- [python-telegram-bot](https://pypi.org/project/python-telegram-bot/): Telegram Bot API wrapper for Python.
+- [pyTelegramBotAPI](https://pypi.org/project/pyTelegramBotAPI/): Telegram Bot API wrapper for Python.
+- [aiofiles](https://pypi.org/project/aiofiles/): Python library for handling local disk files in asyncio applications.
+- [aiohttp](https://pypi.org/project/aiohttp/): Asynchronous HTTP Client/Server for asyncio and Python.
+- [moviepy](https://pypi.org/project/moviepy/): Python library for video editing.
 
 ## Configuration
 
