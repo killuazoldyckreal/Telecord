@@ -1,2 +1,5 @@
 discord.py
 pyTelegramBotAPI
+aiofiles
+aiohttp
+moviepy
