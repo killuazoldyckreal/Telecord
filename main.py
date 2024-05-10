@@ -7,6 +7,7 @@ import asyncio, traceback, re
 from telebot import types
 from collections import OrderedDict
 from moviepy.editor import VideoFileClip
+from helper import *
 
 # Discord Bot Token
 DISCORD_TOKEN = "Discord Bot Token"
