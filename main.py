@@ -9,16 +9,16 @@ from collections import OrderedDict
 from moviepy.editor import VideoFileClip
 
 # Discord Bot Token
-DISCORD_TOKEN = "BTOKEN"
+DISCORD_TOKEN = "Discord Bot Token"
 
 # Telegram Bot Token
-TELEGRAM_TOKEN = "TOKENTG"
+TELEGRAM_TOKEN = "Telegram Bot Token"
 
 # Discord Channel ID
-DISCORD_CHANNEL_ID = 123737867671471016
+DISCORD_CHANNEL_ID = 13267468755565765 #Enter your discord channel id
 
 # Telegram Group Chat ID
-TELEGRAM_CHAT_ID = 1737657820  # Enter you Telegram chat id
+TELEGRAM_CHAT_ID = 123443464 #Enter you Telegram chat id
 
 # Initialize Discord client
 telecordDC = commands.Bot(
