@@ -1,23 +1,24 @@
 import discord
 from discord.ext import commands
 from collections import OrderedDict
-import asyncio
+import asyncio, re
 import traceback
 import telebot
 from telebot.async_telebot import AsyncTeleBot
-from collections import OrderedDict
+from telebot.util import escape
+from helper import *
 
 # Discord Bot Token
 DISCORD_TOKEN = "Discord Bot Token"
 
 # Telegram Bot Token
 TELEGRAM_TOKEN = "Telegram Bot Token"
+message_dict = OrderedDict()
 
 class Telecord:
     def __init__(self):
         self.tgbot = AsyncTeleBot(TELEGRAM_TOKEN)
         self.dcbot = commands.Bot(command_prefix="!", help_command=None, intents=discord.Intents.all())
-        self.message_dict = OrderedDict()
 
     async def dcstart(self):
         self.dcbot.add_listener(self.on_ready)

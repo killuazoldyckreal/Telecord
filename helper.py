@@ -1,5 +1,8 @@
 import os, aiofiles, re, aiohttp
-
+import discord
+from telebot.util import escape
+from telebot import types
+from moviepy.editor import VideoFileClip
 
 async def sendAttachments(message, header, tgbot, TELEGRAM_CHAT_ID):
     media_group = []
