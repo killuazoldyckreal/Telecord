@@ -8,6 +8,8 @@ from telebot import types
 from collections import OrderedDict
 from moviepy.editor import VideoFileClip
 from helper import *
+from telecord import Telecord
+
 
 # Discord Bot Token
 DISCORD_TOKEN = "Discord Bot Token"
@@ -283,7 +285,11 @@ if __name__ == "__main__":
     # Run the bots
     try:
         loop = asyncio.get_event_loop()
-        asyncio.gather(start_discord_bot(), start_telegram_bot())
+        # Initialize the bot class
+        telecord = Telecord()
+
+        # Start the bot
+        asyncio.gather(telecord.dcstart(), telecord.tgstart())
         loop.run_forever()
     except:
         traceback.print_exc()

@@ -1,5 +1,100 @@
 import os, aiofiles, re, aiohttp
 
+
+async def sendAttachments(message, header, tgbot, TELEGRAM_CHAT_ID):
+    media_group = []
+    try:
+        for attachment in message.attachments:
+            if ".pdf" in attachment.url:
+                media_group.append(types.InputMediaDocument(attachment.url))
+            elif ".mp3" in attachment.url or ".m4a" in attachment.url:
+                media_group.append(types.InputMediaAudio(attachment.url))
+            elif ".mp4" in attachment.url:
+                media_group.append(types.InputMediaVideo(attachment.url))
+            elif ".jpeg" in attachment.url or ".jpg" in attachment.url:
+                media_group.append(types.InputMediaPhoto(attachment.url))
+            elif ".png" in attachment.url:
+                media_group.append(types.InputMediaPhoto(attachment.url))
+            elif ".gif" in attachment.url:
+                media_group.append(types.InputMediaAnimation(attachment.url))
+            else:
+                media_group.append(types.InputMediaDocument(attachment.url))
+        content = escapeMD(header)
+        await tgbot.send_message(
+            TELEGRAM_CHAT_ID, content, parse_mode="markdownv2"
+        )
+        await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
+        return True
+    except:
+        traceback.print_exc()
+        return False
+
+async def sendEmoji(tgbot, message, items):
+    msgcontent, header, TELEGRAM_CHAT_ID = items
+    # Check if message has single emoji
+    if len(msgcontent) == 1:
+        header = header + f"\n`{message.id}`"
+        caption = escapeMD(header)
+        if ".png" in msgcontent[0]:
+            await tgbot.send_photo(
+                TELEGRAM_CHAT_ID,
+                msgcontent[0],
+                caption=caption,
+                parse_mode="markdownv2",
+            )
+        elif ".gif" in msgcontent[0]:
+            await tgbot.send_animation(
+                TELEGRAM_CHAT_ID,
+                msgcontent[0],
+                caption=caption,
+                parse_mode="markdownv2",
+            )
+        return True
+
+    # Send multiple emojis as an album
+    media_group = []
+    for url in msgcontent:
+        if ".png" in url:
+            media_group.append(types.InputMediaPhoto(url))
+        elif ".gif" in url:
+            media_group.append(types.InputMediaAnimation(url))
+    header = header + f"\n`{message.id}`"
+    content = escapeMD(header)
+    await self.tgbot.send_message(
+        TELEGRAM_CHAT_ID, content, parse_mode="markdownv2"
+    )
+    await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
+    return True
+
+async def sendAnimation(tgbot, message, items):
+    msgcontent, header, TELEGRAM_CHAT_ID = items
+    if "tenor" in msgcontent:
+        msgcontent = await get_direct_gif_url(msgcontent.strip())
+    header = header + f"\n`{message.id}`"
+    caption = escapeMD(header)
+    await tgbot.send_animation(
+        TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2"
+    )
+    return True
+
+
+def getHeader(message):
+    header = ""
+    if message.embeds:
+        embed = message.embeds[0]
+        rcontent = embed.description
+        if len(rcontent) > 60:
+            rcontent = escape(message.content[:50]) + "..."
+        author = embed.author.name
+    else:
+        if len(message.content) > 60:
+            rcontent = escape(message.content[:50]) + "..."
+        else:
+            rcontent = escape(message.content)
+        author = message.author.name
+    header = f">*{escape(author)}:* {rcontent}\n⤷ "
+    return header
+
 def escapeMD(text):
     markdown_symbols = ["-", "|", "#", "+", "."]
     escaped_text = ""
