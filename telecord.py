@@ -22,6 +22,7 @@ class Telecord:
     async def dcstart(self):
         self.dcbot.add_listener(self.on_ready)
         self.dcbot.add_listener(self.on_message)
+        self.dcbot.add_listener(self.on_tgmessage, "on_tgmessage")
         await self.dcbot.start(DISCORD_TOKEN)
 
     async def on_ready(self):
@@ -40,6 +41,25 @@ class Telecord:
                 )
             await self.forward_to_telegram(message, replied_message)
         await self.dcbot.process_commands(message)
+
+    async def on_tgmessage(self, message, dcchannel, replied_message):
+        try:
+            # Check if message is a reply
+            rmsg = getReplyID(message_dict, dcchannel, replied_message)                
+
+            # Check if message has GIF file
+            if message.animation:
+                await sendAnimation2DC(self.tgbot, message, dcchannel, rmsg)
+                return
+
+            embed = discord.Embed(description=message.text)
+            embed.set_author(name=message.from_user.full_name[:25])
+            if rmsg:
+                await rmsg.reply(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            else:
+                await dcchannel.send(embed=embed)
+        except:
+            traceback.print_exc()
 
     async def forward_to_telegram(self, TELEGRAM_CHAT_ID: int, message: discord.Message, replied_message: discord.Message = None):
         try:
@@ -83,8 +103,8 @@ class Telecord:
                 if message.reply_to_message:
                     replied_message = message.reply_to_message
                 # Forward the message from Telegram to Discord
-                await forward_to_discord(message, replied_message)
+                await forward_to_discord(message, dcchannel, replied_message)
 
-    async def forward_to_discord(self, message):
+    async def forward_to_discord(self, message, dcchannel, replied_message):
         # Create the event for sending the message
-        telecordDC.dispatch("tgmessage", message, replied_message)
+        telecordDC.dispatch("tgmessage", message, dcchannel, replied_message)

@@ -77,6 +77,56 @@ async def sendAnimation(tgbot, message, items):
     )
     return True
 
+def getReplyMsg(message_dict, dcchannel, message=None):
+    rmsg = None
+    replied_msgID = None
+    if message:
+        if message.text:
+            replied_msgID = int(
+                re.search(
+                    r"\b\d+\b(?![\s\S]*\b\d+\b)", message.text
+                ).group()
+            )
+        elif message.caption:
+            replied_msgID = int(
+                re.search(
+                    r"\b\d+\b(?![\s\S]*\b\d+\b)", message.caption
+                ).group()
+            )
+        if replied_msgID:
+            try:
+                rmsg = message_dict[replied_msgID]
+            except KeyError:
+                if not rmsg:
+                    try:
+                        rmsg = await dcchannel.fetch_message(replied_msgID)
+                    except discord.errors.NotFound:
+                        pass
+    return rmsg
+
+async def sendAnimation2DC(tgbot, message, dcchannel, rmsg=None):
+    try:
+        file_info = await tgbot.get_file(message.animation.file_id)
+        file_content = await tgbot.download_file(file_info.file_path)
+        with open("image.mp4", "wb") as f:
+            f.write(file_content)
+        videoClip = VideoFileClip("image.mp4")
+        videoClip.write_gif("image.gif")
+        embed = discord.Embed()
+        embed.set_author(name=message.from_user.full_name[:25])
+        file = discord.File("image.gif")
+        await delete_file("image.mp4")
+        embed.set_image(url="attachment://image.gif")
+        if rmsg:
+            await rmsg.reply(embed=embed, file=file, allowed_mentions=discord.AllowedMentions.none())
+            await delete_file("image.gif")
+        else:
+            await dcchannel.send(embed=embed, file=file)
+            await delete_file("image.gif")
+    except:
+        traceback.print_exc()
+        return False
+    return True
 
 def getHeader(message):
     header = ""
