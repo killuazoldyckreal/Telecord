@@ -45,7 +45,7 @@ class Telecord:
     async def on_tgmessage(self, message, dcchannel, replied_message):
         try:
             # Check if message is a reply
-            rmsg = getReplyID(message_dict, dcchannel, replied_message)                
+            rmsg = getReplyMsg(message_dict, dcchannel, replied_message)                
 
             # Check if message has GIF file
             if message.animation:
@@ -95,6 +95,14 @@ class Telecord:
         self.tgbot.set_update_listener(self.telegram_update_listener)
         await self.tgbot.infinity_polling()
 
+    async def getDCchannel(self, message, replied_message):
+        replied_msgID = None
+        if replied_message:
+            if replied_message.text:
+                replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.text).group())
+            elif replied_message.caption:
+                replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.caption).group())
+
     # Listener function for Telegram updates
     async def telegram_update_listener(self, messages):
         replied_message = None
@@ -103,6 +111,7 @@ class Telecord:
                 if message.reply_to_message:
                     replied_message = message.reply_to_message
                 # Forward the message from Telegram to Discord
+                dcchannel = await self.getDCchannel(message, replied_message)
                 await forward_to_discord(message, dcchannel, replied_message)
 
     async def forward_to_discord(self, message, dcchannel, replied_message):

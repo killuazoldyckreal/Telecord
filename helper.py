@@ -82,17 +82,9 @@ def getReplyMsg(message_dict, dcchannel, message=None):
     replied_msgID = None
     if message:
         if message.text:
-            replied_msgID = int(
-                re.search(
-                    r"\b\d+\b(?![\s\S]*\b\d+\b)", message.text
-                ).group()
-            )
+            replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", message.text).group())
         elif message.caption:
-            replied_msgID = int(
-                re.search(
-                    r"\b\d+\b(?![\s\S]*\b\d+\b)", message.caption
-                ).group()
-            )
+            replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", message.caption).group())
         if replied_msgID:
             try:
                 rmsg = message_dict[replied_msgID]
