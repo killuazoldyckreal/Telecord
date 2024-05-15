@@ -1,0 +1,11 @@
+{
+    "prefix": "?",
+    "activity": [
+        {
+            "listen": "/help"
+        }
+    ],
+    "bot_access_user": [],
+    "embed_color": "0xb3b3b3",
+    "version": "v2.6.8"
+}
