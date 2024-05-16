@@ -10,7 +10,6 @@ from telebot.types import ReplyParameters
 from helper import *
 import function as func
 
-message_dict = OrderedDict()
 activeChannel_dict = OrderedDict()
 reply_dict = OrderedDict()
 
@@ -51,14 +50,12 @@ class DiscordBot(AutoShardedBot):
     async def on_ready(self):
         print("Telecord has connected to Discord!")
         await self.watch_for_changes()
+        self.message_dict = await load_user_data()
         self.session = aiohttp.ClientSession()
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, discord.TextChannel) and not message.author.bot):
-            if len(message_dict) >= 20000:
-                for key in list(message_dict.keys())[:5000]:
-                    del message_dict[key]
-            message_dict[message.id] = message.author.name
+            await save_user_data(message.author.id, message.author.name)
             if message.reference:
                 await self.forward_to_telegram(message, message.reference.message_id)
             await self.forward_to_telegram(message)
@@ -67,34 +64,48 @@ class DiscordBot(AutoShardedBot):
     async def on_tgmessage(self, message, replied_message):
         try:
             result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.from_user.id)})
-            result_telegram = await func.get_db(func.telegramdata, {"useridtg": Int64(message.from_user.id)})
             dcchannel_id = result_telecord['channelid']
             useriddc = result_telecord['useriddc']
             chatid = result_telecord['chatid']
+            author = self.message_dict[str(useriddc)]
 
             # Check if message is a reply
-            rmsg = getReplyMsg(message_dict, dcchannel, replied_message)     
             replied_msgID = None
             if replied_message:
                 if replied_message.text:
-                    replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.text).group())
+                    #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.text).group())
+                    last_line = message.strip().split("\n")[-1]
+                    
+                    #IDs from the last line
+                    ids = [int(id.strip()) for id in last_line.split("|")]
+                    replied_msgID, channelid = ids
                 elif replied_message.caption:
-                    replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.caption).group())           
+                    #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.caption).group()) 
+                    last_line = message.strip().split("\n")[-1]
+                    
+                    #IDs from the last line
+                    ids = [int(id.strip()) for id in last_line.split("|")]
+                    replied_msgID, channelid = ids          
             
             # Check if message has GIF file
             if message.animation:
-                activeChannel_dict[chatid] = {'id':dcchannel.id,'since':int(time.time())}
-                await sendAnimation2DC(self.telegram_bot, message, dcchannel, reply_dict, rmsg)
+                if replied_msgID:
+                    activeChannel_dict[chatid] = {'id':channelid,'since':int(time.time())}
+                    data = [message, channelid, reply_dict]
+                else:
+                    activeChannel_dict[chatid] = {'id':dcchannel_id,'since':int(time.time())}
+                    data = [message, dcchannel_id, reply_dict]
+                await sendAnimation2DC(self.telegram_bot, data, author, replied_msgID)
                 return
 
             embed = discord.Embed(description=message.text)
             embed.set_author(name=message.from_user.full_name[:25])
-            if rmsg:
-                activeChannel_dict[chatid] = {'id':rmsg.channel.id,'since':int(time.time())}
-                msg = await rmsg.reply(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            if replied_msgID:
+                activeChannel_dict[chatid] = {'id':channelid,'since':int(time.time())}
+                msg = await send_reply(channelid, message.text, author, replied_msgID)
             else:
-                activeChannel_dict[chatid] = {'id':dcchannel.id,'since':int(time.time())}
-                msg = await dcchannel.send(embed=embed)
+                activeChannel_dict[chatid] = {'id':dcchannel_id,'since':int(time.time())}
+                msg = await send_reply(dcchannel_id, message.text, author, replied_msgID)
             reply_dict[msg.id] = message.message_id
         except:
             traceback.print_exc()
@@ -129,7 +140,7 @@ class DiscordBot(AutoShardedBot):
                 await sendAnimation(self.telegram_bot, message, items, reply_dict, reply_params)
                 return 
             # Frame the message without any attachments
-            text = f"{escape(msgcontent)}\n\n`{message.id}`"
+            text = f"{escape(msgcontent)}\n\n`{message.id}` | `{message.channel.id}`"
             content = header + text
             content = escapeMD(content)
             msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
@@ -141,7 +152,6 @@ class TelegramBot(AsyncTeleBot):
     def __init__(self, token):
         super().__init__(token)
         self.discord_bot = discord_bot
-        
 
         @self.message_handler(commands=['start'])
         async def send_welcome(message):

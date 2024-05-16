@@ -1,8 +1,25 @@
 import os, aiofiles, re, aiohttp
-import discord
+import discord,random
 from telebot.util import escape
 from telebot import types
 from moviepy.editor import VideoFileClip
+import function as func 
+BOT_TOKEN = func.tokens.dctoken
+
+
+def generate_random_filename(length=20, extension=None):
+    """Generate a random filename with the specified length and extension."""
+    # Define characters to choose from (only alphabetic characters)
+    characters = string.ascii_letters
+
+    # Generate random filename
+    random_filename = ''.join(random.choice(characters) for _ in range(length))
+
+    # Add extension if provided
+    if extension:
+        random_filename += f'.{extension}'
+
+    return random_filename
 
 async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_dict, reply_params=None):
     media_group = []
@@ -86,26 +103,24 @@ def getReplyMsg(message_dict, dcchannel, message=None):
                         pass
     return rmsg
 
-async def sendAnimation2DC(tgbot, message, dcchannel, reply_dict, rmsg=None):
+async def sendAnimation2DC(tgbot, data, author, reply_id=None):
     try:
+        message, channelid, reply_dict = data
         file_info = await tgbot.get_file(message.animation.file_id)
         file_content = await tgbot.download_file(file_info.file_path)
-        with open("image.mp4", "wb") as f:
+        filename = generate_random_filename(extension="mp4")
+        with open(filename, "wb") as f:
             f.write(file_content)
-        videoClip = VideoFileClip("image.mp4")
-        videoClip.write_gif("image.gif")
-        embed = discord.Embed()
-        embed.set_author(name=message.from_user.full_name[:25])
-        file = discord.File("image.gif")
-        await delete_file("image.mp4")
-        embed.set_image(url="attachment://image.gif")
-        if rmsg:
-            msg = await rmsg.reply(embed=embed, file=file, allowed_mentions=discord.AllowedMentions.none())
-            await delete_file("image.gif")
-        else:
-            msg = await dcchannel.send(embed=embed, file=file)
-            await delete_file("image.gif")
-        reply_dict[msg.id] = message.message_id
+        videoClip = VideoFileClip(filename)
+        gifname = generate_random_filename(extension="gif")
+        videoClip.write_gif(gifname)
+        file_path = gifname
+        
+        msg_id, chid = await send_gif(channelid, author, file_path, reply_id)
+        await delete_file(filename)
+        await delete_file(gifname)
+        if msg_id:
+            reply_dict[msg_id] = message.message_id
     except:
         traceback.print_exc()
         return False
@@ -236,14 +251,10 @@ def is_valid_url(text):
     )
     return re.match(regex, text) is not None
 
-async def send_reply(bot_token, channel_id, original_message_id, reply_content):
-    channel_id = data['channel_id']
-    original_message_id = data['message_id']
-    reply_content = data['content']
-    author = data['author']
-    url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+async def send_reply(channel_id, reply_content, author, message_id):
+    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
-        "Authorization": f"Bot {bot_token}",
+        "Authorization": f"Bot {BOT_TOKEN}",
         "Content-Type": "application/json"
     }
     data = {
@@ -253,15 +264,88 @@ async def send_reply(bot_token, channel_id, original_message_id, reply_content):
             "author": {
                 "name": author
             }
-        }],
-        "message_reference": {
-            "message_id": original_message_id
-        },
-        "allowed_mentions": {
+        }]
+    }
+    if message_id:
+        data["message_reference"] = {
+            "message_id": message_id
+        }
+        data["allowed_mentions"] = {
             "replied_user": False
         }
+
+    async with session.post(url, headers=headers, json=data) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            m_id = response_json.get('id')
+            c_id = response_json.get('channel_id')
+            return m_id, c_id
+        else:
+            print(f"Failed to send message: {response.status}")
+            return None, None
+
+async def send_gif(channel_id, author, file_path, message_id=None):
+    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+    headers = {
+        "Authorization": f"Bot {BOT_TOKEN}"
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=data) as response:
-            return
+    data = aiohttp.FormData()
+    with open(file_path, 'rb') as file:
+        data.add_field('files[0]', file, filename='image.gif', content_type='image/gif')
+    
+    # Create the payload JSON as a separate field
+    payload_json = {
+        "content": "",
+        "embeds": [{
+            "image": {
+                "url": "attachment://image.gif"
+            },
+            "author": {
+                "name": author
+            }
+        }]
+    }
+    if message_id:
+        payload_json["message_reference"] = {
+            "message_id": message_id
+        }
+    data.add_field('payload_json', json.dumps(payload_json))
+
+    async with session.post(url, data=data, headers=headers) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            m_id = response_json.get('id')
+            c_id = response_json.get('channel_id')
+            return m_id, c_id
+        else:
+            print(f"Failed to send message: {response.status}")
+            return None, None
+
+async def save_user_data(user_id, username):
+    # Create or load existing JSON file
+    try:
+        async with aiofiles.open("users.json", 'r') as file:
+            data = json.loads(await file.read())
+    except FileNotFoundError:
+        data = {}
+
+    # Update or add user data
+    if str(user_id) in data:
+        # User ID already exists, update username
+        data[str(user_id)] = username
+    else:
+        # User ID does not exist, add new entry
+        data[str(user_id)] = username
+
+    # Save data back to JSON file
+    async with aiofiles.open("users.json", 'w') as file:
+        await file.write(json.dumps(data, indent=4))
+
+async def load_user_data():
+    try:
+        async with aiofiles.open("users.json", 'r') as file:
+            user_data = json.loads(await file.read())
+    except FileNotFoundError:
+        user_data = {}
+    return user_data
