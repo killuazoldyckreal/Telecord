@@ -86,7 +86,7 @@ def getReplyMsg(message_dict, dcchannel, message=None):
                         pass
     return rmsg
 
-async def sendAnimation2DC(tgbot, message, dcchannel, rmsg=None):
+async def sendAnimation2DC(tgbot, message, dcchannel, reply_dict, rmsg=None):
     try:
         file_info = await tgbot.get_file(message.animation.file_id)
         file_content = await tgbot.download_file(file_info.file_path)
@@ -100,11 +100,12 @@ async def sendAnimation2DC(tgbot, message, dcchannel, rmsg=None):
         await delete_file("image.mp4")
         embed.set_image(url="attachment://image.gif")
         if rmsg:
-            await rmsg.reply(embed=embed, file=file, allowed_mentions=discord.AllowedMentions.none())
+            msg = await rmsg.reply(embed=embed, file=file, allowed_mentions=discord.AllowedMentions.none())
             await delete_file("image.gif")
         else:
-            await dcchannel.send(embed=embed, file=file)
+            msg = await dcchannel.send(embed=embed, file=file)
             await delete_file("image.gif")
+        reply_dict[msg.id] = message.message_id
     except:
         traceback.print_exc()
         return False

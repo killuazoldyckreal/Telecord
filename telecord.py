@@ -84,17 +84,18 @@ class DiscordBot(AutoShardedBot):
             # Check if message has GIF file
             if message.animation:
                 activeChannel_dict[chatid] = {'id':dcchannel.id,'since':int(time.time())}
-                await sendAnimation2DC(self.telegram_bot, message, dcchannel, rmsg)
+                await sendAnimation2DC(self.telegram_bot, message, dcchannel, reply_dict, rmsg)
                 return
 
             embed = discord.Embed(description=message.text)
             embed.set_author(name=message.from_user.full_name[:25])
             if rmsg:
                 activeChannel_dict[chatid] = {'id':rmsg.channel.id,'since':int(time.time())}
-                await rmsg.reply(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                msg = await rmsg.reply(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             else:
                 activeChannel_dict[chatid] = {'id':dcchannel.id,'since':int(time.time())}
-                await dcchannel.send(embed=embed)
+                msg = await dcchannel.send(embed=embed)
+            reply_dict[msg.id] = message.message_id
         except:
             traceback.print_exc()
 
