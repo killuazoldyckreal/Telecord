@@ -6,15 +6,13 @@ import traceback
 import telebot
 from telebot.async_telebot import AsyncTeleBot
 from telebot.util import escape
+from telebot.types import ReplyParameters
 from helper import *
+import function as func
 
-# Discord Bot Token
-DISCORD_TOKEN = "Discord Bot Token"
-
-# Telegram Bot Token
-TELEGRAM_TOKEN = "Telegram Bot Token"
 message_dict = OrderedDict()
 activeChannel_dict = OrderedDict()
+reply_dict = OrderedDict()
 
 class DiscordBot(AutoShardedBot):
     def __init__(self, *args, **kwargs):
@@ -26,14 +24,14 @@ class DiscordBot(AutoShardedBot):
         await self.connect_db()
 
     async def watch_for_changes(interval=240):
-    while True:
-        await asyncio.sleep(interval)
-        for key, value in activeChannel_dict.items():
-            if int(time.time()) - value['since'] > 600:
-                result = await func.get_db(func.telecorddata, {"chatid": Int64(key)})
-                primarychannel = result['channelid']
-                if value['id']!=primarychannel:
-                    activeChannel_dict[key] = {'id':primarychannel, 'since': int(time.time())}
+        while True:
+            await asyncio.sleep(interval)
+            for key, value in activeChannel_dict.items():
+                if int(time.time()) - value['since'] > 600:
+                    result = await func.get_db(func.telecorddata, {"chatid": Int64(key)})
+                    primarychannel = result['channelid']
+                    if value['id']!=primarychannel:
+                        activeChannel_dict[key] = {'id':primarychannel, 'since': int(time.time())}
 
     async def connect_db(self) -> None:
         if not ((db_name := func.tokens.mongodb_name) and (db_url := func.tokens.mongodb_url)):
@@ -52,19 +50,18 @@ class DiscordBot(AutoShardedBot):
 
     async def on_ready(self):
         print("Telecord has connected to Discord!")
-        self.channel = self.get_channel(self.channel_id)
+        await self.watch_for_changes()
+        self.session = aiohttp.ClientSession()
 
     async def on_message(self, message):
-        replied_message = None
         if (message.guild and isinstance(message.channel, discord.TextChannel) and not message.author.bot):
-            if len(message_dict) >= 100:
-                message_dict.popitem(last=False)
-            message_dict[message.id] = message
+            if len(message_dict) >= 20000:
+                for key in list(message_dict.keys())[:5000]:
+                    del message_dict[key]
+            message_dict[message.id] = message.author.name
             if message.reference:
-                replied_message = await message.channel.fetch_message(
-                    message.reference.message_id
-                )
-            await self.forward_to_telegram(message, replied_message)
+                await self.forward_to_telegram(message, message.reference.message_id)
+            await self.forward_to_telegram(message)
         await self.process_commands(message)
 
     async def on_tgmessage(self, message, replied_message):
@@ -101,15 +98,21 @@ class DiscordBot(AutoShardedBot):
         except:
             traceback.print_exc()
 
-    async def forward_to_telegram(self, message: discord.Message, replied_message: discord.Message = None):
+    async def forward_to_telegram(self, message: discord.Message, replied_messageid: int = None):
         try:
             TELEGRAM_CHAT_ID = result_telecord['chatid']
             activeChannel_dict[TELEGRAM_CHAT_ID] = {'id':message.channel.id,'since':int(time.time())} 
             header = ""
-            if replied_message:
-                header = getHeader(replied_message) 
+            reply_params = None
+            if replied_messageid:
+                try:
+                    tg_msgid = reply_dict[replied_messageid]
+                    reply_params = ReplyParameters(message_id=tg_msgid)
+                except:
+                    pass
             if message.attachments:
-                response = await sendAttachments(message, header, self.telegram_bot, TELEGRAM_CHAT_ID)
+                adata = [TELEGRAM_CHAT_ID, replied_messageid]
+                response = await sendAttachments(message, self.telegram_bot, adata, reply_dict, reply_params)
                 if response:
                     return 
             header = header + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
@@ -118,17 +121,18 @@ class DiscordBot(AutoShardedBot):
             items = [msgcontent, header, TELEGRAM_CHAT_ID] 
             # Check if message has any emoji
             if isinstance(msgcontent, list):
-                await sendEmoji(self.telegram_bot, message, items)
+                await sendEmoji(self.telegram_bot, message, items, reply_dict, reply_params)
                 return 
             # Check if message has any discord GIF
             if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
-                await sendAnimation(self.telegram_bot, message, items)
+                await sendAnimation(self.telegram_bot, message, items, reply_dict, reply_params)
                 return 
             # Frame the message without any attachments
             text = f"{escape(msgcontent)}\n\n`{message.id}`"
             content = header + text
             content = escapeMD(content)
-            await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2")
+            msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
+            reply_dict[message.id] = msg.message_id
         except:
             traceback.print_exc()
 
@@ -163,15 +167,20 @@ class TelegramBot(AsyncTeleBot):
         # Create the event for sending the message
         self.discord_bot.dispatch("tgmessage", message, replied_message)
 
-discord_bot = DiscordBot()
-telegram_bot = TelegramBot(token='YOUR_TELEGRAM_BOT_TOKEN', discord_bot=discord_bot)
-discord_bot.telegram_bot = telegram_bot
 
-async def dcstart():
-    await discord_bot.start('YOUR_DISCORD_BOT_TOKEN')
+class Telecord:
+    def __init__(self):
+        self.dctoken = func.tokens.dctoken
+        self.tgtoken = func.tokens.tgtoken
+        self.discord_bot = DiscordBot()
+        self.telegram_bot = TelegramBot(token=tgtoken, discord_bot=self.discord_bot)
+        self.discord_bot.telegram_bot = self.telegram_bot
 
-async def tgstart():
-    print("Telecord has connected to Telegram!")
-    await telegram_bot.infinity_polling()
+    async def dcstart(self):
+        await self.discord_bot.start(self.dctoken)
+
+    async def tgstart(self):
+        print("Telecord has connected to Telegram!")
+        await self.telegram_bot.infinity_polling()
 
     

@@ -4,7 +4,7 @@ from telebot.util import escape
 from telebot import types
 from moviepy.editor import VideoFileClip
 
-async def sendAttachments(message, header, tgbot, TELEGRAM_CHAT_ID):
+async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_dict, reply_params=None):
     media_group = []
     try:
         for attachment in message.attachments:
@@ -22,37 +22,26 @@ async def sendAttachments(message, header, tgbot, TELEGRAM_CHAT_ID):
                 media_group.append(types.InputMediaAnimation(attachment.url))
             else:
                 media_group.append(types.InputMediaDocument(attachment.url))
-        content = escapeMD(header)
-        await tgbot.send_message(
-            TELEGRAM_CHAT_ID, content, parse_mode="markdownv2"
-        )
-        await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
-        return True
+        msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
+        reply_dict[message.id] = msg.message_id
+        return reply_dict
     except:
         traceback.print_exc()
         return False
 
-async def sendEmoji(tgbot, message, items):
+async def sendEmoji(tgbot, message, items, reply_dict, reply_params=None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     # Check if message has single emoji
     if len(msgcontent) == 1:
         header = header + f"\n`{message.id}`"
         caption = escapeMD(header)
         if ".png" in msgcontent[0]:
-            await tgbot.send_photo(
-                TELEGRAM_CHAT_ID,
-                msgcontent[0],
-                caption=caption,
-                parse_mode="markdownv2",
-            )
+            msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
         elif ".gif" in msgcontent[0]:
-            await tgbot.send_animation(
-                TELEGRAM_CHAT_ID,
-                msgcontent[0],
-                caption=caption,
-                parse_mode="markdownv2",
-            )
-        return True
+            msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
+        
+        reply_dict[message.id] = msg.message_id
+        return reply_dict
 
     # Send multiple emojis as an album
     media_group = []
@@ -63,21 +52,19 @@ async def sendEmoji(tgbot, message, items):
             media_group.append(types.InputMediaAnimation(url))
     header = header + f"\n`{message.id}`"
     content = escapeMD(header)
-    await self.tgbot.send_message(
-        TELEGRAM_CHAT_ID, content, parse_mode="markdownv2"
-    )
+    msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
+    reply_dict[message.id] = msg.message_id
     await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
     return True
 
-async def sendAnimation(tgbot, message, items):
+async def sendAnimation(tgbot, message, items, reply_dict, reply_params = None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     if "tenor" in msgcontent:
         msgcontent = await get_direct_gif_url(msgcontent.strip())
     header = header + f"\n`{message.id}`"
     caption = escapeMD(header)
-    await tgbot.send_animation(
-        TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2"
-    )
+    await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
+    reply_dict[message.id] = msg.message_id
     return True
 
 def getReplyMsg(message_dict, dcchannel, message=None):
@@ -122,23 +109,6 @@ async def sendAnimation2DC(tgbot, message, dcchannel, rmsg=None):
         traceback.print_exc()
         return False
     return True
-
-def getHeader(message):
-    header = ""
-    if message.embeds:
-        embed = message.embeds[0]
-        rcontent = embed.description
-        if len(rcontent) > 60:
-            rcontent = escape(message.content[:50]) + "..."
-        author = embed.author.name
-    else:
-        if len(message.content) > 60:
-            rcontent = escape(message.content[:50]) + "..."
-        else:
-            rcontent = escape(message.content)
-        author = message.author.name
-    header = f">*{escape(author)}:* {rcontent}\n⤷ "
-    return header
 
 def escapeMD(text):
     markdown_symbols = ["-", "|", "#", "+", "."]
@@ -264,3 +234,33 @@ def is_valid_url(text):
         re.IGNORECASE,
     )
     return re.match(regex, text) is not None
+
+async def send_reply(bot_token, channel_id, original_message_id, reply_content):
+    channel_id = data['channel_id']
+    original_message_id = data['message_id']
+    reply_content = data['content']
+    author = data['author']
+    url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+    headers = {
+        "Authorization": f"Bot {bot_token}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "content": "",
+        "embeds": [{
+            "description": reply_content,
+            "author": {
+                "name": author
+            }
+        }],
+        "message_reference": {
+            "message_id": original_message_id
+        },
+        "allowed_mentions": {
+            "replied_user": False
+        }
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=data) as response:
+            return
