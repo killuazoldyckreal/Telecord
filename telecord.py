@@ -112,6 +112,7 @@ class DiscordBot(AutoShardedBot):
 
     async def forward_to_telegram(self, message: discord.Message, replied_messageid: int = None):
         try:
+            result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.author.id)})
             TELEGRAM_CHAT_ID = result_telecord['chatid']
             activeChannel_dict[TELEGRAM_CHAT_ID] = {'id':message.channel.id,'since':int(time.time())} 
             header = ""
