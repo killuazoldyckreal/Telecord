@@ -296,8 +296,8 @@ async def send_gif(session, channel_id, author, file_path, reply_messageid=None)
     }
 
     data = aiohttp.FormData()
-    with open(file_path, 'rb') as file:
-        data.add_field('files[0]', file, filename='image.gif', content_type='image/gif')
+    file = open(file_path, 'rb')
+    data.add_field('files[0]', file, filename='image.gif', content_type='image/gif')
     
     # Create the payload JSON as a separate field
     payload_json = {
@@ -318,6 +318,7 @@ async def send_gif(session, channel_id, author, file_path, reply_messageid=None)
     data.add_field('payload_json', json.dumps(payload_json))
 
     async with session.post(url, data=data, headers=headers) as response:
+        file.close()
         if response.status == 200:
             response_json = await response.json()
             m_id = response_json.get('id')
