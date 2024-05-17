@@ -1,9 +1,10 @@
 import aiohttp, random
 from discord.ext import tasks, commands
-from discord import app_commands, Intents, TextChannel, Message, Interaction
+from discord import app_commands, Intents, TextChannel, Message, Interaction, CategoryChannel
 import re, time, asyncio
 import traceback
 import telebot
+from typing import Union
 from telebot.async_telebot import AsyncTeleBot
 from telebot.util import escape
 from telebot.types import ReplyParameters
@@ -15,14 +16,19 @@ from motor.motor_asyncio import (
 from helper import *
 
 authdict = {}
-
+        
 class DiscordBot(commands.AutoShardedBot):
     def __init__(self):
-        super().__init__(command_prefix = func.settings.bot_prefix, intents = Intents.all())
+        super().__init__(command_prefix = func.settings.bot_prefix, intents = Intents.all(), help_command= None)
         self.tree.command(
             name="start",
             description="Setup your discord-telegram chat."
         )(self.start_command)
+        self.tree.command(
+            name="mute",
+            description="Mute incoming messages from a channel."
+        )(self.mute_command)
+        self.tree.command(name="help", description="Show guide to how to get started.")(self.send_bot_help)
         self.embed_color = func.settings.embed_color
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
@@ -184,6 +190,22 @@ class DiscordBot(commands.AutoShardedBot):
                 content = escapeMD(content)
                 msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
                 await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+        except:
+            traceback.print_exc()
+            
+    @app_commands.describe()
+    async def send_bot_help(self, interaction: Interaction):
+        embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
+        embed.description = "Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command."
+        embed.add_field(name="/help", value="Guide to how to get started", inline=False)
+        embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
+        embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
+        await interaction.response.send_message(embed=embed)
+        
+    @app_commands.describe(channel="Discord channel in which you want to mute")
+    async def mute_command(self, interaction: Interaction, channel: Union[CategoryChannel, TextChannel]):
+        try:
+            await interaction.response.send_message("Coming soon!")
         except:
             traceback.print_exc()
             
