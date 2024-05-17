@@ -1,6 +1,6 @@
 import discord, aiohttp
-from discord.ext import tasks
-from discord.ext.commands import AutoShardedBot
+from discord.ext import tasks, commands
+from discord import app_commands
 import re, time
 import traceback
 import telebot
@@ -12,9 +12,10 @@ import function as func
 
 func.settings = Settings(func.open_json("jsonfiles/settings.json"))
 
-class DiscordBot(AutoShardedBot):
+class DiscordBot(commands.AutoShardedBot):
     def __init__(self)
         super().__init__(command_prefix=func.settings.bot_prefix, intents=discord.Intents.all())
+        self.tree = app_commands.CommandTree(self)
         self.embed_color = func.settings.embed_color
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
@@ -24,6 +25,7 @@ class DiscordBot(AutoShardedBot):
         
 
     async def setup_hook(self) -> None:
+        await self.tree.sync()
         # Connecting to MongoDB
         await self.connect_db()
     
@@ -74,8 +76,8 @@ class DiscordBot(AutoShardedBot):
         if (message.guild and isinstance(message.channel, discord.TextChannel) and not message.author.bot):
             await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
             if message.reference:
-                await self.telegram_bot.forward_to_telegram(message, self.reply_dict, message.reference.message_id)
-            await self.telegram_bot.forward_to_telegram(message)
+                await self.forward_to_telegram(message, message.reference.message_id)
+            await self.forward_to_telegram(message)
         await self.process_commands(message)
 
     async def on_tgmessage(self, message, replied_message):
@@ -136,6 +138,58 @@ class DiscordBot(AutoShardedBot):
         except:
             traceback.print_exc()
 
+    async def forward_to_telegram(self, message: discord.Message, replied_messageid: int = None):
+        try:
+            result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.author.id)})
+            TELEGRAM_CHAT_ID = result_telecord['chatid']
+            activeChannel_data = {'id':message.channel.id,'since':int(time.time())}
+            await save_to_json("jsonfiles/activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
+            header = ""
+            reply_params = None
+            if replied_messageid:
+                try:
+                    tg_msgid = self.reply_dict[str(replied_messageid)]
+                    reply_params = ReplyParameters(message_id=tg_msgid)
+                except:
+                    pass
+            if message.attachments:
+                adata = [TELEGRAM_CHAT_ID, replied_messageid]
+                response = await sendAttachments(message, self.telegram_bot, adata, reply_params)
+                if response:
+                    return 
+            header = header + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
+            # Check if message has any emoji, mentions for channels, roles or members
+            msgcontent = getRtext(message)
+            items = [msgcontent, header, TELEGRAM_CHAT_ID] 
+            # Check if message has any emoji
+            if isinstance(msgcontent, list):
+                await sendEmoji(self.telegram_bot, message, items, reply_params)
+                return 
+            # Check if message has any discord GIF
+            if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
+                await sendAnimation(self.telegram_bot, message, items, reply_params)
+                return 
+            # Frame the message without any attachments
+            text = f"{escape(msgcontent)}\n\n`{message.id}` | `{message.channel.id}`"
+            content = header + text
+            content = escapeMD(content)
+            msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
+            await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+        except:
+            traceback.print_exc()
+
+
+@bot.tree.command(name="start", description="Setup your discord-telegram chat.")
+@app_commands.describe(channel="Discord channel in which you want to chat", telegram_chatID="Enter your Telegram chat ID recieved by /start in telegram", telegram_userID="Enter your Telegram user ID recieved by /start in telegram")
+async def start_command(interaction: discord.Interaction, channel:discord.TextChannel, telegram_chatID:int, telegram_userID:int):
+    await interaction.response.defer()
+    insert_telecord = {"useriddc": interaction.user.id, "useridtg": telegram_userID, "channelid": channel.id, "chatid": telegram_chatID}
+    response = await func.insert_db(func.telecorddata, insert_telecord)
+    if response:
+        await interaction.followup.send("Your setup completed successfully!")
+    else:
+        await interaction.followup.send("Setup failed! Try again or contact support")
+
 
 class TelegramBot(AsyncTeleBot):
     def __init__(self, token, discord_bot=None):
@@ -167,45 +221,7 @@ class TelegramBot(AsyncTeleBot):
         # Create the event for sending the message
         self.discord_bot.dispatch("tgmessage", message, replied_message)
 
-    async def forward_to_telegram(self, message: discord.Message, reply_dict={}, replied_messageid: int = None):
-        try:
-            result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.author.id)})
-            TELEGRAM_CHAT_ID = result_telecord['chatid']
-            activeChannel_data = {'id':message.channel.id,'since':int(time.time())}
-            await save_to_json("jsonfiles/activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
-            header = ""
-            reply_params = None
-            if replied_messageid:
-                try:
-                    tg_msgid = reply_dict[str(replied_messageid)]
-                    reply_params = ReplyParameters(message_id=tg_msgid)
-                except:
-                    pass
-            if message.attachments:
-                adata = [TELEGRAM_CHAT_ID, replied_messageid]
-                response = await sendAttachments(message, self, adata, reply_params)
-                if response:
-                    return 
-            header = header + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
-            # Check if message has any emoji, mentions for channels, roles or members
-            msgcontent = getRtext(message)
-            items = [msgcontent, header, TELEGRAM_CHAT_ID] 
-            # Check if message has any emoji
-            if isinstance(msgcontent, list):
-                await sendEmoji(self, message, items, reply_params)
-                return 
-            # Check if message has any discord GIF
-            if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
-                await sendAnimation(self, message, items, reply_params)
-                return 
-            # Frame the message without any attachments
-            text = f"{escape(msgcontent)}\n\n`{message.id}` | `{message.channel.id}`"
-            content = header + text
-            content = escapeMD(content)
-            msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-            await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-        except:
-            traceback.print_exc()
+    
 
 class Telecord:
     def __init__(self):

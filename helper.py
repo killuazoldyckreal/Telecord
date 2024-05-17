@@ -243,6 +243,21 @@ def is_valid_url(text):
     )
     return re.match(regex, text) is not None
 
+async def is_valid_private_chat(tgbot, chat_id):
+    try:
+        # Get chat information
+        chat = await tgbot.get_chat(chat_id)
+        
+        # Check if the chat type is 'private'
+        if chat.type == 'private':
+            return True
+        else:
+            return False
+    except telebot.apihelper.ApiException as e:
+        # If an error occurs (e.g., chat not found), print the error and return False
+        print(f"Error: {e}")
+        return False
+
 async def send_reply(session, channel_id, message, author, reply_messageid=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {

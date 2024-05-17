@@ -61,13 +61,7 @@ async def get_db(collection, filter: Dict):
     result = await collection.find_one(filter)
     return result
 
-async def update_telegramdata(entries):
-    # Insert example
-    insert_telecord = {"useridtg": 37422429, "channelid": 3274389274223, "chatid": 3827498237}
-    insert_telegram = {"useridtg": 786737498, "altchannels": {"channel1": 63892928384, "channel2": 957454567, "channel3": 3847349344}}
-    await insert_db(telecorddata, insert_telecord)
-    await insert_db(telegramdata, insert_telegram)
-    
+async def update_telegramdata(entries):    
     # Update example
     filter_telecord = {"useridtg": 37422429}
     update_telecord = {"$set": {"chatid": 987654321}}
