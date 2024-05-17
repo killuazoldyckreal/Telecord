@@ -1,5 +1,5 @@
-import os, aiofiles, re, aiohttp
-import discord,random, json
+import os, aiofiles, re, aiohttp, string
+import discord,random, json, traceback
 from telebot.util import escape
 from telebot import types
 from moviepy.editor import VideoFileClip

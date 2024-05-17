@@ -1,4 +1,4 @@
-import aiohttp
+import aiohttp, random
 from discord.ext import tasks, commands
 from discord import app_commands, Intents, TextChannel, Message, Interaction
 import re, time, asyncio
@@ -121,13 +121,11 @@ class DiscordBot(commands.AutoShardedBot):
                     if replied_msgID:
                         activechannel_data = {'id':channelid,'since':int(time.time())}
                         await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                        data = [message.message_id, channelid, author, gifname]
+                        msg_id = await send_gif(self.session, channelid, author, gifname, replied_msgID)
                     else:
                         activechannel_data = {'id':dcchannel_id,'since':int(time.time())}
                         await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                        data = [message.message_id, dcchannel_id, author, gifname]
-                    
-                    msg_id = await send_gif(self.session, data, replied_msgID)
+                        msg_id = await send_gif(self.session, dcchannel_id, author, gifname, replied_msgID)
                     await delete_file(filename)
                     await delete_file(gifname)
                     if msg_id:
@@ -251,7 +249,7 @@ class TelegramBot(AsyncTeleBot):
         async def send_chatid(message):
             await self.reply_to(message, f"Chat ID: `{message.chat.id}`", parse_mode="markdownv2")
 
-        @self.message_handler(func=lambda message: True)
+        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation'])
         async def echo_all(message):
             replied_message = None
             if message.reply_to_message:
