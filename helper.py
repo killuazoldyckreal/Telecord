@@ -263,9 +263,6 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
             "description": message.text,
             "author": {
                 "name": author
-            },
-            "footer": {
-                "text": f"{message.message_id}"
             }
         }]
     }
@@ -305,9 +302,6 @@ async def send_gif(session, channel_id, author, file_path, reply_messageid=None)
             },
             "author": {
                 "name": author
-            },
-            "footer": {
-                "text": "This is footer message"
             }
         }]
     }

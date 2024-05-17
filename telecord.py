@@ -1,6 +1,6 @@
 import aiohttp
 from discord.ext import tasks, commands
-from discord import app_commands, Intents, TextChannel, Embed, Message, Interaction
+from discord import app_commands, Intents, TextChannel, Message, Interaction
 import re, time, asyncio
 import traceback
 import telebot
@@ -105,12 +105,12 @@ class DiscordBot(commands.AutoShardedBot):
             if replied_message:
                 if replied_message.text:
                     #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.text).group())
-                    last_line = message.text.strip().split("\n")[-1]
+                    last_line = replied_message.text.strip().split("\n")[-1]
                     ids = [int(id.strip()) for id in last_line.split("|")]
                     replied_msgID, channelid = ids
                 elif replied_message.caption:
                     #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.caption).group()) 
-                    last_line = message.caption.strip().split("\n")[-1]
+                    last_line = replied_message.caption.strip().split("\n")[-1]
                     ids = [int(id.strip()) for id in last_line.split("|")]
                     replied_msgID, channelid = ids          
             
@@ -134,9 +134,7 @@ class DiscordBot(commands.AutoShardedBot):
                         await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
                         return msg_id
                 return
-
-            embed = Embed(description=message.text)
-            embed.set_author(name=message.from_user.full_name[:25])
+            
             if replied_msgID:
                 activechannel_data = {'id':channelid,'since':int(time.time())}
                 await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
