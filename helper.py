@@ -260,7 +260,7 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
     data = {
         "content": "",
         "embeds": [{
-            "description": reply_content,
+            "description": message.text,
             "author": {
                 "name": author
             },
