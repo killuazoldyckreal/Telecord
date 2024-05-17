@@ -3,3 +3,4 @@ pyTelegramBotAPI
 aiofiles
 aiohttp
 moviepy
+motor

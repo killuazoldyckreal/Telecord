@@ -1,10 +1,5 @@
-import discord, json, os, copy
-
-from discord.ext import commands
-from datetime import datetime
-from time import strptime
-from io import BytesIO
-from typing import Optional, Union, Dict, Any
+import os
+from typing import Dict
 from addons import Settings, TOKENS
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -23,7 +18,6 @@ settings: Settings
 MONGO_DB: AsyncIOMotorClient
 telecorddata: AsyncIOMotorCollection
 telegramdata: AsyncIOMotorCollection
-ALLOWED_MENTIONS = discord.AllowedMentions().none()
 
 # Convert integers to Int64
 def convert_to_int64(data):
