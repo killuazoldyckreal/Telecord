@@ -15,6 +15,6 @@ class TOKENS:
         load_dotenv()
         self.dctoken = os.getenv("DCTOKEN")
         self.tgtoken = os.getenv("TGTOKEN")
-        self.bug_report_channel_id = int(os.getenv("BUG_REPORT_CHANNEL_ID"))
+        #self.bug_report_channel_id = int(os.getenv("BUG_REPORT_CHANNEL_ID"))
         self.mongodb_url = os.getenv("MONGODB_URL")
         self.mongodb_name = os.getenv("MONGODB_NAME")

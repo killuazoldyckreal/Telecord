@@ -1,5 +1,5 @@
 import os, aiofiles, re, aiohttp
-import discord,random
+import discord,random, json
 from telebot.util import escape
 from telebot import types
 from moviepy.editor import VideoFileClip
@@ -82,25 +82,6 @@ async def sendAnimation(tgbot, message, items, reply_params = None):
     msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
     return msg
-
-def getReplyMsg(message_dict, dcchannel, message=None):
-    rmsg = None
-    replied_msgID = None
-    if message:
-        if message.text:
-            replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", message.text).group())
-        elif message.caption:
-            replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", message.caption).group())
-        if replied_msgID:
-            try:
-                rmsg = message_dict[replied_msgID]
-            except KeyError:
-                if not rmsg:
-                    try:
-                        rmsg = await dcchannel.fetch_message(replied_msgID)
-                    except discord.errors.NotFound:
-                        pass
-    return rmsg
 
 async def getAnimation(tgbot, message):
     try:
