@@ -198,11 +198,15 @@ class TelegramBot(AsyncTeleBot):
 
         @self.message_handler(commands=['start'])
         async def send_welcome(message):
-            await self.reply_to(message, "Hello!")
+            await self.reply_to(message, f"Hello! This is your userid: {message.from_user.id}\nThis is your userid: {message.chat.id}")
 
         @self.message_handler(commands=['help'])
         async def send_help(message):
             await self.reply_to(message, "This is help!")
+
+        @self.message_handler(commands=['userid'])
+        async def send_chatid(message):
+            await self.reply_to(message, f"User ID: {message.from_user.id}")
 
         @self.message_handler(commands=['chatid'])
         async def send_chatid(message):
