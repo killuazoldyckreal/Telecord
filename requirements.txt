@@ -4,3 +4,4 @@ aiofiles
 aiohttp
 moviepy
 motor
+python-dotenv
