@@ -345,6 +345,8 @@ async def save_to_json(file_path, key, value):
         data = {str(key): value}
         async with aiofiles.open(file_path, mode='w') as file:
             await file.write(json.dumps(data, indent=4))
+    except:
+        traceback.print_exc()
 
 async def load_user_data(file_path):
     try:
