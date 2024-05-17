@@ -40,7 +40,7 @@ async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
             else:
                 media_group.append(types.InputMediaDocument(attachment.url))
         msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
-        await save_to_json("replydict.json", message.id, msg.message_id)
+        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         return msg
     except:
         traceback.print_exc()
@@ -56,7 +56,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
             msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
         elif ".gif" in msgcontent[0]:
             msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-        await save_to_json("replydict.json", message.id, msg.message_id)
+        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
     return msg
 
     # Send multiple emojis as an album
@@ -69,7 +69,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
     header = header + f"\n`{message.id}`"
     content = escapeMD(header)
     msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-    await save_to_json("replydict.json", message.id, msg.message_id)
+    await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
     await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
     return msg
 
@@ -80,7 +80,7 @@ async def sendAnimation(tgbot, message, items, reply_params = None):
     header = header + f"\n`{message.id}`"
     caption = escapeMD(header)
     msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
-    await save_to_json("replydict.json", message.id, msg.message_id)
+    await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
     return msg
 
 def getReplyMsg(message_dict, dcchannel, message=None):

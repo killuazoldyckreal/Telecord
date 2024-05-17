@@ -10,14 +10,15 @@ from telebot.types import ReplyParameters
 from helper import *
 import function as func
 
+func.settings = Settings(func.open_json("jsonfiles/settings.json"))
+
 class DiscordBot(AutoShardedBot):
-    def __init__(self, telegram_bot=None)
-        commandPrefix = func.settings.bot_prefix
+    def __init__(self)
+        super().__init__(command_prefix=func.settings.bot_prefix, intents=discord.Intents.all())
         self.embed_color = func.settings.embed_color
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
-        self.telegram_bot = telegram_bot
-        super().__init__(command_prefix=commandPrefix, intents=discord.Intents.all())
+        self.telegram_bot = None
         self.my_loop1.start()
         self.my_loop2.start()
         
@@ -39,13 +40,13 @@ class DiscordBot(AutoShardedBot):
                 primarychannel = result['channelid']
                 if value['id']!=primarychannel:
                     data = {'id':primarychannel, 'since': int(time.time())}
-                    await save_to_json("activechannels.json", key, data)
+                    await save_to_json("jsonfiles/activechannels.json", key, data)
     
     @tasks.loop(seconds=300)
     async def my_loop2(self):
-        self.reply_dict = await load_user_data("replydict.json")
-        self.message_dict = await load_user_data("users.json")
-        self.activeChannel_dict = await load_user_data("activechannels.json")
+        self.reply_dict = await load_user_data("jsonfiles/replydict.json")
+        self.message_dict = await load_user_data("jsonfiles/users.json")
+        self.activeChannel_dict = await load_user_data("jsonfiles/activechannels.json")
 
     async def connect_db(self) -> None:
         if not ((db_name := func.tokens.mongodb_name) and (db_url := func.tokens.mongodb_url)):
@@ -64,14 +65,14 @@ class DiscordBot(AutoShardedBot):
 
     async def on_ready(self):
         print("Telecord has connected to Discord!")
-        self.message_dict = await load_user_data("users.json")
-        self.reply_dict = await load_user_data("replydict.json")
-        self.reply_dict = await load_user_data("activechannels.json")
+        self.message_dict = await load_user_data("jsonfiles/users.json")
+        self.reply_dict = await load_user_data("jsonfiles/replydict.json")
+        self.reply_dict = await load_user_data("jsonfiles/activechannels.json")
         self.session = aiohttp.ClientSession()
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, discord.TextChannel) and not message.author.bot):
-            await save_to_json("users.json", message.author.id, message.author.name)
+            await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
             if message.reference:
                 await self.telegram_bot.forward_to_telegram(message, self.reply_dict, message.reference.message_id)
             await self.telegram_bot.forward_to_telegram(message)
@@ -105,18 +106,18 @@ class DiscordBot(AutoShardedBot):
                 if filename:
                     if replied_msgID:
                         activechannel_data = {'id':channelid,'since':int(time.time())}
-                        await save_to_json("activechannels.json", chatid, activechannel_data)
+                        await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                         data = [message.message_id, channelid, author, gifname]
                     else:
                         activechannel_data = {'id':dcchannel_id,'since':int(time.time())}
-                        await save_to_json("activechannels.json", chatid, activechannel_data)
+                        await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                         data = [message.message_id, dcchannel_id, author, gifname]
                     
                     msg_id = await send_gif(self.session, data, replied_msgID)
                     await delete_file(filename)
                     await delete_file(gifname)
                     if msg_id:
-                        await save_to_json("replydict.json", msg_id, message.message_id)
+                        await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
                         return msg_id
                 return
 
@@ -124,14 +125,14 @@ class DiscordBot(AutoShardedBot):
             embed.set_author(name=message.from_user.full_name[:25])
             if replied_msgID:
                 activeChannel_data = {'id':channelid,'since':int(time.time())}
-                await save_to_json("activechannels.json", chatid, activechannel_data)
+                await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                 msg_id = await send_reply(self.session, channelid, message, author, replied_msgID)
             else:
                 activeChannel_data = {'id':dcchannel_id,'since':int(time.time())}
-                await save_to_json("activechannels.json", chatid, activechannel_data)
+                await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                 msg_id = await send_reply(self.session, dcchannel_id, message, author, replied_msgID)
             if msg_id:
-                await save_to_json("replydict.json", msg_id, message.message_id)
+                await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
         except:
             traceback.print_exc()
 
@@ -171,7 +172,7 @@ class TelegramBot(AsyncTeleBot):
             result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.author.id)})
             TELEGRAM_CHAT_ID = result_telecord['chatid']
             activeChannel_data = {'id':message.channel.id,'since':int(time.time())}
-            await save_to_json("activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
+            await save_to_json("jsonfiles/activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
             header = ""
             reply_params = None
             if replied_messageid:
@@ -202,7 +203,7 @@ class TelegramBot(AsyncTeleBot):
             content = header + text
             content = escapeMD(content)
             msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-            await save_to_json("replydict.json", message.id, msg.message_id)
+            await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         except:
             traceback.print_exc()
 

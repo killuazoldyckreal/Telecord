@@ -1,4 +1,4 @@
-import os
+import os, json
 from typing import Dict
 from addons import Settings, TOKENS
 from motor.motor_asyncio import (
@@ -18,6 +18,13 @@ settings: Settings
 MONGO_DB: AsyncIOMotorClient
 telecorddata: AsyncIOMotorCollection
 telegramdata: AsyncIOMotorCollection
+
+def open_json(path: str) -> dict:
+    try:
+        with open(os.path.join(ROOT_DIR, path), encoding="utf8") as json_file:
+            return json.load(json_file)
+    except:
+        return {}
 
 # Convert integers to Int64
 def convert_to_int64(data):
