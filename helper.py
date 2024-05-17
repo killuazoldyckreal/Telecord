@@ -39,6 +39,9 @@ async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
                 media_group.append(types.InputMediaAnimation(attachment.url))
             else:
                 media_group.append(types.InputMediaDocument(attachment.url))
+        header = f"{message.author.name} | #{message.channel.name}\n\n`{message.id}` | `{message.channel.id}`"
+        content = escapeMD(header)
+        await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode='markdownv2')
         msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
         await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         return msg
@@ -50,7 +53,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     # Check if message has single emoji
     if len(msgcontent) == 1:
-        header = header + f"\n`{message.id}`"
+        header = header + f"\n`{message.id}` | `{message.channel.id}`"
         caption = escapeMD(header)
         if ".png" in msgcontent[0]:
             msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
@@ -66,7 +69,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
             media_group.append(types.InputMediaPhoto(url))
         elif ".gif" in url:
             media_group.append(types.InputMediaAnimation(url))
-    header = header + f"\n`{message.id}`"
+    header = header + f"\n`{message.id}` | `{message.channel.id}`"
     content = escapeMD(header)
     msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
@@ -77,7 +80,7 @@ async def sendAnimation(tgbot, message, items, reply_params = None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     if "tenor" in msgcontent:
         msgcontent = await get_direct_gif_url(msgcontent.strip())
-    header = header + f"\n`{message.id}`"
+    header = header + f"\n`{message.id}` | `{message.channel.id}`"
     caption = escapeMD(header)
     msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
@@ -88,15 +91,18 @@ async def getAnimation(tgbot, message):
         file_info = await tgbot.get_file(message.animation.file_id)
         file_content = await tgbot.download_file(file_info.file_path)
         filename = generate_random_filename(extension="mp4")
-        with open(filename, "wb") as f:
+        filepath = f"telegramdownloads/{filename}"
+        with open(filepath, "wb") as f:
             f.write(file_content)
-        videoClip = VideoFileClip(filename)
+        videoClip = VideoFileClip(filepath)
         gifname = generate_random_filename(extension="gif")
-        videoClip.write_gif(gifname)
+        gifpath = f"telegramdownloads/{gifname}"
+        videoClip.write_gif(gifpath)
+        return filepath, gifpath
     except:
         traceback.print_exc()
-        return None, None
-    return filename, gifname
+    return None, None
+    
     
 
 def escapeMD(text):
