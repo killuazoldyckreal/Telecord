@@ -1,7 +1,7 @@
-import discord, aiohttp
+import aiohttp
 from discord.ext import tasks, commands
-from discord import app_commands
-import re, time
+from discord import app_commands, Intents, TextChannel, Embed, Message, Interaction
+import re, time, asyncio
 import traceback
 import telebot
 from telebot.async_telebot import AsyncTeleBot
@@ -12,9 +12,11 @@ import function as func
 
 func.settings = Settings(func.open_json("jsonfiles/settings.json"))
 
+authdict = {}
+
 class DiscordBot(commands.AutoShardedBot):
     def __init__(self)
-        super().__init__(command_prefix=func.settings.bot_prefix, intents=discord.Intents.all())
+        super().__init__(command_prefix = func.settings.bot_prefix, intents = Intents.all())
         self.tree = app_commands.CommandTree(self)
         self.embed_color = func.settings.embed_color
         self.bot_access_user = func.settings.bot_access_user
@@ -73,7 +75,7 @@ class DiscordBot(commands.AutoShardedBot):
         self.session = aiohttp.ClientSession()
 
     async def on_message(self, message):
-        if (message.guild and isinstance(message.channel, discord.TextChannel) and not message.author.bot):
+        if (message.guild and isinstance(message.channel, TextChannel) and not message.author.bot):
             await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
             if message.reference:
                 await self.forward_to_telegram(message, message.reference.message_id)
@@ -123,7 +125,7 @@ class DiscordBot(commands.AutoShardedBot):
                         return msg_id
                 return
 
-            embed = discord.Embed(description=message.text)
+            embed = Embed(description=message.text)
             embed.set_author(name=message.from_user.full_name[:25])
             if replied_msgID:
                 activeChannel_data = {'id':channelid,'since':int(time.time())}
@@ -138,7 +140,7 @@ class DiscordBot(commands.AutoShardedBot):
         except:
             traceback.print_exc()
 
-    async def forward_to_telegram(self, message: discord.Message, replied_messageid: int = None):
+    async def forward_to_telegram(self, message: Message, replied_messageid: int = None):
         try:
             result_telecord = await func.get_db(func.telecorddata, {"useridtg": Int64(message.author.id)})
             TELEGRAM_CHAT_ID = result_telecord['chatid']
@@ -181,14 +183,36 @@ class DiscordBot(commands.AutoShardedBot):
 
 @bot.tree.command(name="start", description="Setup your discord-telegram chat.")
 @app_commands.describe(channel="Discord channel in which you want to chat", telegram_chatID="Enter your Telegram chat ID recieved by /start in telegram", telegram_userID="Enter your Telegram user ID recieved by /start in telegram")
-async def start_command(interaction: discord.Interaction, channel:discord.TextChannel, telegram_chatID:int, telegram_userID:int):
+async def start_command(interaction: Interaction, channel: TextChannel, telegram_chatID:int, telegram_userID:int):
     await interaction.response.defer()
-    insert_telecord = {"useriddc": interaction.user.id, "useridtg": telegram_userID, "channelid": channel.id, "chatid": telegram_chatID}
-    response = await func.insert_db(func.telecorddata, insert_telecord)
+    response = await is_valid_user(self.telegram_bot, telegram_chatID, telegram_userID)
     if response:
-        await interaction.followup.send("Your setup completed successfully!")
+        otp = ""
+        for _ in range(6):
+            otp += str(random.randint(0, 9))
+        authdict[telegram_userID] = {'id':interaction.user.id, 'code': otp, 'since': int(time.time())}
+        await self.telegram_bot.send_message(telegram_chatID, f"This is your Telecord authentication code:\n `{otp}`")
+        await interaction.followup.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
+        def check(m):
+            return m.author == interaction.user and m.channel == interaction.channel and re.match(r'^\d{6}$', m.content.strip())
+        try:
+            # Wait for a message from the same user in the same channel for 120 seconds
+            reply = await bot.wait_for('message', timeout=120, check=check)
+        except asyncio.TimeoutError:
+            await interaction.followup.send("You didn't reply within 2 minutes.")
+            return
+        authcode = int(reply.content.strip())
+        if int(otp)==authcode:
+            insert_telecord = {"useriddc": interaction.user.id, "useridtg": telegram_userID, "channelid": channel.id, "chatid": telegram_chatID}
+            response = await func.insert_db(func.telecorddata, insert_telecord)
+            if response:
+                await interaction.followup.send("<a:chk:1241031331756904498> Your setup completed successfully!")
+            else:
+                await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
+        else:
+            await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
     else:
-        await interaction.followup.send("Setup failed! Try again or contact support")
+        await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
 
 
 class TelegramBot(AsyncTeleBot):

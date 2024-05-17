@@ -258,6 +258,18 @@ async def is_valid_private_chat(tgbot, chat_id):
         print(f"Error: {e}")
         return False
 
+async def is_valid_user(tgbot, chat_id, user_id):
+    try:
+        chat_member = await tgbot.get_chat_member(chat_id, user_id)
+        
+        if chat_member.status =='member':
+            return True  # The chat_id belongs to your bot and the chat belongs to the specified user_id
+        else:
+            return False  # The chat_id does not belong to your bot or the chat does not belong to the specified user_id
+    except Exception as e:
+        print("Error:", e)
+        return False
+
 async def send_reply(session, channel_id, message, author, reply_messageid=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
