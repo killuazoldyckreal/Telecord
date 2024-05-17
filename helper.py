@@ -21,7 +21,7 @@ def generate_random_filename(length=20, extension=None):
 
     return random_filename
 
-async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_dict, reply_params=None):
+async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
     media_group = []
     try:
         for attachment in message.attachments:
@@ -40,13 +40,13 @@ async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_dict, reply_pa
             else:
                 media_group.append(types.InputMediaDocument(attachment.url))
         msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
-        reply_dict[message.id] = msg.message_id
-        return reply_dict
+        await save_to_json("replydict.json", message.id, msg.message_id)
+        return msg
     except:
         traceback.print_exc()
-        return False
+    return None
 
-async def sendEmoji(tgbot, message, items, reply_dict, reply_params=None):
+async def sendEmoji(tgbot, message, items, reply_params=None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     # Check if message has single emoji
     if len(msgcontent) == 1:
@@ -56,9 +56,8 @@ async def sendEmoji(tgbot, message, items, reply_dict, reply_params=None):
             msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
         elif ".gif" in msgcontent[0]:
             msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-        
-        reply_dict[message.id] = msg.message_id
-        return reply_dict
+        await save_to_json("replydict.json", message.id, msg.message_id)
+    return msg
 
     # Send multiple emojis as an album
     media_group = []
@@ -70,19 +69,19 @@ async def sendEmoji(tgbot, message, items, reply_dict, reply_params=None):
     header = header + f"\n`{message.id}`"
     content = escapeMD(header)
     msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-    reply_dict[message.id] = msg.message_id
+    await save_to_json("replydict.json", message.id, msg.message_id)
     await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
-    return True
+    return msg
 
-async def sendAnimation(tgbot, message, items, reply_dict, reply_params = None):
+async def sendAnimation(tgbot, message, items, reply_params = None):
     msgcontent, header, TELEGRAM_CHAT_ID = items
     if "tenor" in msgcontent:
         msgcontent = await get_direct_gif_url(msgcontent.strip())
     header = header + f"\n`{message.id}`"
     caption = escapeMD(header)
-    await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
-    reply_dict[message.id] = msg.message_id
-    return True
+    msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
+    await save_to_json("replydict.json", message.id, msg.message_id)
+    return msg
 
 def getReplyMsg(message_dict, dcchannel, message=None):
     rmsg = None
@@ -103,9 +102,8 @@ def getReplyMsg(message_dict, dcchannel, message=None):
                         pass
     return rmsg
 
-async def sendAnimation2DC(tgbot, data, author, reply_id=None):
+async def getAnimation(tgbot, message):
     try:
-        message, channelid, reply_dict = data
         file_info = await tgbot.get_file(message.animation.file_id)
         file_content = await tgbot.download_file(file_info.file_path)
         filename = generate_random_filename(extension="mp4")
@@ -114,17 +112,11 @@ async def sendAnimation2DC(tgbot, data, author, reply_id=None):
         videoClip = VideoFileClip(filename)
         gifname = generate_random_filename(extension="gif")
         videoClip.write_gif(gifname)
-        file_path = gifname
-        
-        msg_id, chid = await send_gif(channelid, author, file_path, reply_id)
-        await delete_file(filename)
-        await delete_file(gifname)
-        if msg_id:
-            reply_dict[msg_id] = message.message_id
     except:
         traceback.print_exc()
-        return False
-    return True
+        return None, None
+    return filename, gifname
+    
 
 def escapeMD(text):
     markdown_symbols = ["-", "|", "#", "+", "."]
@@ -251,7 +243,7 @@ def is_valid_url(text):
     )
     return re.match(regex, text) is not None
 
-async def send_reply(channel_id, reply_content, author, message_id):
+async def send_reply(session, channel_id, message, author, reply_messageid=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
         "Authorization": f"Bot {BOT_TOKEN}",
@@ -263,12 +255,15 @@ async def send_reply(channel_id, reply_content, author, message_id):
             "description": reply_content,
             "author": {
                 "name": author
+            },
+            "footer": {
+                "text": f"{message.message_id}"
             }
         }]
     }
-    if message_id:
+    if reply_messageid:
         data["message_reference"] = {
-            "message_id": message_id
+            "message_id": reply_messageid
         }
         data["allowed_mentions"] = {
             "replied_user": False
@@ -278,13 +273,12 @@ async def send_reply(channel_id, reply_content, author, message_id):
         if response.status == 200:
             response_json = await response.json()
             m_id = response_json.get('id')
-            c_id = response_json.get('channel_id')
-            return m_id, c_id
+            return m_id
         else:
             print(f"Failed to send message: {response.status}")
-            return None, None
+            return None
 
-async def send_gif(channel_id, author, file_path, message_id=None):
+async def send_gif(session, channel_id, author, file_path, reply_messageid=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
         "Authorization": f"Bot {BOT_TOKEN}"
@@ -303,12 +297,15 @@ async def send_gif(channel_id, author, file_path, message_id=None):
             },
             "author": {
                 "name": author
+            },
+            "footer": {
+                "text": "This is footer message"
             }
         }]
     }
-    if message_id:
+    if reply_messageid:
         payload_json["message_reference"] = {
-            "message_id": message_id
+            "message_id": reply_messageid
         }
     data.add_field('payload_json', json.dumps(payload_json))
 
@@ -316,35 +313,34 @@ async def send_gif(channel_id, author, file_path, message_id=None):
         if response.status == 200:
             response_json = await response.json()
             m_id = response_json.get('id')
-            c_id = response_json.get('channel_id')
-            return m_id, c_id
+            return m_id
         else:
             print(f"Failed to send message: {response.status}")
-            return None, None
+            return None
 
-async def save_user_data(user_id, username):
-    # Create or load existing JSON file
+async def save_to_json(file_path, key, value):
     try:
-        async with aiofiles.open("users.json", 'r') as file:
-            data = json.loads(await file.read())
+        # Read the existing JSON file content
+        async with aiofiles.open(file_path, mode='r') as file:
+            content = await file.read()
+            data = json.loads(content)
+        
+        # Append the new key-value pair
+        data[str(key)] = value
+        
+        # Write the updated JSON back to the file
+        async with aiofiles.open(file_path, mode='w') as file:
+            await file.write(json.dumps(data, indent=4))
+    
     except FileNotFoundError:
-        data = {}
+        # If the file does not exist, create it and add the key-value pair
+        data = {str(key): value}
+        async with aiofiles.open(file_path, mode='w') as file:
+            await file.write(json.dumps(data, indent=4))
 
-    # Update or add user data
-    if str(user_id) in data:
-        # User ID already exists, update username
-        data[str(user_id)] = username
-    else:
-        # User ID does not exist, add new entry
-        data[str(user_id)] = username
-
-    # Save data back to JSON file
-    async with aiofiles.open("users.json", 'w') as file:
-        await file.write(json.dumps(data, indent=4))
-
-async def load_user_data():
+async def load_user_data(file_path):
     try:
-        async with aiofiles.open("users.json", 'r') as file:
+        async with aiofiles.open(file_path, 'r') as file:
             user_data = json.loads(await file.read())
     except FileNotFoundError:
         user_data = {}
