@@ -20,21 +20,13 @@ authdict = {}
 class DiscordBot(commands.AutoShardedBot):
     def __init__(self):
         super().__init__(command_prefix = func.settings.bot_prefix, intents = Intents.all(), help_command= None)
-        self.tree.command(
-            name="start",
-            description="Setup your discord-telegram chat."
-        )(self.start_command)
-        self.tree.command(
-            name="mute",
-            description="Mute incoming messages from a channel."
-        )(self.mute_command)
-        self.tree.command(name="help", description="Show guide to how to get started.")(self.send_bot_help)
         self.embed_color = func.settings.embed_color
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
         self.telegram_bot = None
         self.my_loop1 = tasks.loop(minutes=4)(self.my_task)
         self.my_loop2 = tasks.loop(seconds=300)(self.load_data_task)
+        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help"]
         
         # Add before_loop hooks
         self.my_loop1.before_loop(self.before_my_loop)
@@ -42,7 +34,6 @@ class DiscordBot(commands.AutoShardedBot):
         
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
         # Connecting to MongoDB
         await self.connect_db()
         
@@ -78,6 +69,8 @@ class DiscordBot(commands.AutoShardedBot):
     async def on_ready(self):
         print("Telecord has connected to Discord!")
         try:
+            synced = await self.tree.sync()
+            print(f"Synced {len(synced)} command(s)")
             self.message_dict = await load_user_data("jsonfiles/users.json")
             self.reply_dict = await load_user_data("jsonfiles/replydict.json")
             self.reply_dict = await load_user_data("jsonfiles/activechannels.json")
@@ -92,11 +85,13 @@ class DiscordBot(commands.AutoShardedBot):
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, TextChannel) and not message.author.bot):
-            await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
-            if message.reference:
-                await self.forward_to_telegram(message, message.reference.message_id)
-            await self.forward_to_telegram(message)
-        await self.process_commands(message)
+            if any(message.content.split(" ",1)[0] == command for command in self.commands_list):
+                await self.process_commands(message)
+            else:
+                await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
+                if message.reference:
+                    await self.forward_to_telegram(message, message.reference.message_id)
+                await self.forward_to_telegram(message)
 
     async def on_tgmessage(self, message, replied_message):
         try:
@@ -192,62 +187,6 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         except:
             traceback.print_exc()
-            
-    @app_commands.describe()
-    async def send_bot_help(self, interaction: Interaction):
-        embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
-        embed.description = "Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command."
-        embed.add_field(name="/help", value="Guide to how to get started", inline=False)
-        embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
-        embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
-        await interaction.response.send_message(embed=embed)
-        
-    @app_commands.describe(channel="Discord channel in which you want to mute")
-    async def mute_command(self, interaction: Interaction, channel: Union[CategoryChannel, TextChannel]):
-        try:
-            await interaction.response.send_message("Coming soon!")
-        except:
-            traceback.print_exc()
-            
-    @app_commands.describe(
-        channel="Discord channel in which you want to chat",
-        telegram_chat_id="Enter your Telegram chat ID received by /start in telegram",
-        telegram_user_id="Enter your Telegram user ID received by /start in telegram"
-    )
-    async def start_command(self, interaction: Interaction, channel: TextChannel, telegram_chat_id: int, telegram_user_id: int):
-        try:
-            await interaction.response.defer()
-            response = await is_valid_user(self.telegram_bot, telegram_chat_id, telegram_user_id)
-            if response:
-                otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
-                authdict[telegram_user_id] = {'id': interaction.user.id, 'code': otp, 'since': int(time.time())}
-                await self.telegram_bot.send_message(telegram_chat_id, f"This is your Telecord authentication code:\n `{otp}`", parse_mode="markdownv2")
-                await interaction.followup.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
-
-                def check(m):
-                    return m.author == interaction.user and m.channel == interaction.channel and re.match(r'^\d{6}$', m.content.strip())
-
-                try:
-                    # Wait for a message from the same user in the same channel for 120 seconds
-                    reply = await self.wait_for('message', timeout=120, check=check)
-                except asyncio.TimeoutError:
-                    await interaction.followup.send("You didn't reply within 2 minutes.")
-                    return
-
-                authcode = int(reply.content.strip())
-                if int(otp) == authcode:
-                    insert_telecord = {"useriddc": interaction.user.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id}
-                    response = await func.insert_db(func.telecorddata, insert_telecord)
-                    if response:
-                        await interaction.followup.send("<a:chk:1241031331756904498> Your setup completed successfully!")
-                    else:
-                        await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
-                else:
-                    await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
-            else:
-                await interaction.followup.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
-        except:
-            traceback.print_exc()
 
 
 class TelegramBot(AsyncTeleBot):
@@ -285,14 +224,75 @@ class TelegramBot(AsyncTeleBot):
         self.discord_bot.dispatch("tgmessage", message, replied_message)
 
     
+bot = DiscordBot()
+telegram_bot = TelegramBot(token = func.tokens.tgtoken, discord_bot = bot)
+bot.telegram_bot = telegram_bot
 
+@bot.hybrid_command(name="mute", description="Mute incoming messages from a channel.", with_app_command = True)
+@app_commands.describe(channel="Selec channel that you want to mute")
+async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, TextChannel]):
+    try:
+        await ctx.send("Coming soon!")
+    except:
+        traceback.print_exc()
+        
+        
+@bot.hybrid_command(name="help", description="Show guide to how to get started.", with_app_command = True)
+async def send_bot_help(ctx: commands.Context):
+    embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
+    embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command.\n\n**Tip**: `Use {func.settings.bot_prefix}prefix commands instead of /slash commands to avoid timeout issues`"
+    embed.add_field(name="/help", value="Guide to how to get started", inline=False)
+    embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
+    embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
+    await ctx.send(embed=embed)
+        
+    
+@bot.hybrid_command(name="start", description="Setup your discord-telegram chat.", with_app_command = True)
+@app_commands.describe(
+    channel="Discord channel in which you want to chat",
+    telegram_chat_id="Enter your Telegram chat ID received by /start in telegram",
+    telegram_user_id="Enter your Telegram user ID received by /start in telegram"
+)
+async def start_command(ctx: commands.Context, channel: TextChannel, telegram_chat_id: int, telegram_user_id: int):
+    try:
+        await ctx.defer()
+        response = await is_valid_user(telegram_bot, telegram_chat_id, telegram_user_id)
+        if response:
+            otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
+            authdict[telegram_user_id] = {'id': interaction.user.id, 'code': otp, 'since': int(time.time())}
+            await telegram_bot.send_message(telegram_chat_id, f"This is your Telecord authentication code:\n `{otp}`", parse_mode="markdownv2")
+            await ctx.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
+
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and re.match(r'^\d{6}$', m.content.strip())
+            
+            try:
+                # Wait for a message from the same user in the same channel for 120 seconds
+                reply = await bot.wait_for('message', timeout=120, check=check)
+            except asyncio.TimeoutError:
+                await ctx.send("You didn't reply within 2 minutes.")
+                return
+            authcode = int(reply.content.strip())
+            if int(otp) == authcode:
+                insert_telecord = {"useriddc": ctx.author.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id}
+                response = await func.insert_db(func.telecorddata, insert_telecord)
+                if response:
+                    await ctx.send("<a:chk:1241031331756904498> Your setup completed successfully!")
+                    return
+                await ctx.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
+                return
+            await ctx.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
+            return
+        await ctx.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
+    except:
+        traceback.print_exc()
+            
+            
 class Telecord:
     def __init__(self):
         self.dctoken = func.tokens.dctoken
-        self.tgtoken = func.tokens.tgtoken
-        self.discord_bot = DiscordBot()
-        self.telegram_bot = TelegramBot(token=self.tgtoken, discord_bot=self.discord_bot)
-        self.discord_bot.telegram_bot = self.telegram_bot
+        self.discord_bot = bot
+        self.telegram_bot = telegram_bot
 
     async def dcstart(self):
         try:
