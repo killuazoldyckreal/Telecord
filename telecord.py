@@ -1,4 +1,5 @@
 import aiohttp, random
+import discord
 from discord.ext import tasks, commands
 from discord import app_commands, Intents, TextChannel, Message, Interaction, CategoryChannel
 import re, time, asyncio
@@ -174,7 +175,7 @@ class TelegramBot(AsyncTeleBot):
 
         @self.message_handler(commands=['start'])
         async def send_welcome(message):
-            await self.reply_to(message, f"Hello! This is your userid: `{message.from_user.id}`\nThis is your userid: `{message.chat.id}`", parse_mode="markdownv2")
+            await self.reply_to(message, f"Hello\! This is your userid: `{message.from_user.id}`\nThis is your userid: `{message.chat.id}`", parse_mode="markdownv2")
 
         @self.message_handler(commands=['help'])
         async def send_help(message):
@@ -237,9 +238,9 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
         if ctx.interaction:
             interaction : discord.Interaction = ctx.interaction
             await interaction.response.defer()
-            sendmessage = ctx.interaction.followup.send
+            sendmessage = ctx.interaction.followup
         else:
-            sendmessage = ctx.send
+            sendmessage = ctx
         response = await is_valid_user(telegram_bot, telegram_chat_id, telegram_user_id)
         if response:
             result_telecord = await func.get_db(func.telecorddata, {"useriddc": int(ctx.author.id)})
