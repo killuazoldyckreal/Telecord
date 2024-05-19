@@ -24,29 +24,12 @@ class DiscordBot(commands.AutoShardedBot):
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
         self.telegram_bot = None
-        self.my_loop1 = tasks.loop(minutes=4)(self.my_task)
-        self.my_loop2 = tasks.loop(seconds=300)(self.load_data_task)
         self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help"]
-        
-        # Add before_loop hooks
-        self.my_loop1.before_loop(self.before_my_loop)
-        self.my_loop2.before_loop(self.before_my_loop)
         
 
     async def setup_hook(self) -> None:
         # Connecting to MongoDB
         await self.connect_db()
-        
-    async def my_task(self):
-        for key, value in self.activeChannel_dict.items():
-            if int(time.time()) - value['since'] > 600:
-                result = await func.get_db(func.telecorddata, {"chatid": int(key)})
-                primarychannel = result['channelid']
-                if value['id']!=primarychannel:
-                    data = {'id':primarychannel, 'since': int(time.time())}
-                    await save_to_json("jsonfiles/activechannels.json", key, data)
-    
-    async def load_data_task(self):
         self.reply_dict = await load_user_data("jsonfiles/replydict.json")
         self.message_dict = await load_user_data("jsonfiles/users.json")
         self.activeChannel_dict = await load_user_data("jsonfiles/activechannels.json")
@@ -71,17 +54,9 @@ class DiscordBot(commands.AutoShardedBot):
         try:
             synced = await self.tree.sync()
             print(f"Synced {len(synced)} command(s)")
-            self.message_dict = await load_user_data("jsonfiles/users.json")
-            self.reply_dict = await load_user_data("jsonfiles/replydict.json")
-            self.reply_dict = await load_user_data("jsonfiles/activechannels.json")
-            self.my_loop1.start()
-            self.my_loop2.start()
             self.session = aiohttp.ClientSession()
         except:
             traceback.print_exc()
-        
-    async def before_my_loop(self):
-        await self.wait_until_ready()
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, TextChannel) and not message.author.bot):
@@ -96,9 +71,12 @@ class DiscordBot(commands.AutoShardedBot):
     async def on_tgmessage(self, message, replied_message):
         try:
             result_telecord = await func.get_db(func.telecorddata, {"useridtg": int(message.from_user.id)})
-            dcchannel_id = result_telecord['channelid']
             useriddc = result_telecord['useriddc']
             chatid = result_telecord['chatid']
+            activeChannelid = self.activeChannel_dict[str(chatid)]['id']
+            timestmp = self.activeChannel_dict[str(chatid)]['since']
+            if int(time.time()) - timestmp > 600:
+                activeChannelid = result_telecord['channelid']
             author = self.message_dict[str(useriddc)]
 
             # Check if message is a reply
@@ -124,9 +102,9 @@ class DiscordBot(commands.AutoShardedBot):
                         await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                         msg_id = await send_gif(self.session, channelid, author, gifname, replied_msgID)
                     else:
-                        activechannel_data = {'id':dcchannel_id,'since':int(time.time())}
+                        activechannel_data = {'id':activeChannelid,'since':int(time.time())}
                         await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                        msg_id = await send_gif(self.session, dcchannel_id, author, gifname, replied_msgID)
+                        msg_id = await send_gif(self.session, activeChannelid, author, gifname, replied_msgID)
                     await delete_file(filename)
                     await delete_file(gifname)
                     if msg_id:
@@ -139,9 +117,9 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                 msg_id = await send_reply(self.session, channelid, message, author, replied_msgID)
             else:
-                activechannel_data = {'id':dcchannel_id,'since':int(time.time())}
+                activechannel_data = {'id':activeChannelid,'since':int(time.time())}
                 await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                msg_id = await send_reply(self.session, dcchannel_id, message, author, replied_msgID)
+                msg_id = await send_reply(self.session, activeChannelid, message, author, replied_msgID)
             if msg_id:
                 await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
         except:
@@ -255,13 +233,22 @@ async def send_bot_help(ctx: commands.Context):
 )
 async def start_command(ctx: commands.Context, channel: TextChannel, telegram_chat_id: int, telegram_user_id: int):
     try:
-        await ctx.defer()
+        if ctx.interaction:
+            interaction : discord.Interaction = ctx.interaction
+            await interaction.response.defer()
+            sendmessage = ctx.interaction.followup.send
+        else:
+            sendmessage = ctx.send
         response = await is_valid_user(telegram_bot, telegram_chat_id, telegram_user_id)
         if response:
+            result_telecord = await func.get_db(func.telecorddata, {"useriddc": int(ctx.author.id)})
+            if result_telecord:
+                await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!")
+                return
             otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            authdict[telegram_user_id] = {'id': interaction.user.id, 'code': otp, 'since': int(time.time())}
+            authdict[telegram_user_id] = {'id': ctx.author.id, 'code': otp, 'since': int(time.time())}
             await telegram_bot.send_message(telegram_chat_id, f"This is your Telecord authentication code:\n `{otp}`", parse_mode="markdownv2")
-            await ctx.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
+            await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
 
             def check(m):
                 return m.author == ctx.author and m.channel == ctx.channel and re.match(r'^\d{6}$', m.content.strip())
@@ -270,20 +257,20 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
                 # Wait for a message from the same user in the same channel for 120 seconds
                 reply = await bot.wait_for('message', timeout=120, check=check)
             except asyncio.TimeoutError:
-                await ctx.send("You didn't reply within 2 minutes.")
+                await sendmessage.send("You didn't reply within 2 minutes.")
                 return
             authcode = int(reply.content.strip())
             if int(otp) == authcode:
                 insert_telecord = {"useriddc": ctx.author.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id}
                 response = await func.insert_db(func.telecorddata, insert_telecord)
                 if response:
-                    await ctx.send("<a:chk:1241031331756904498> Your setup completed successfully!")
+                    await sendmessage.send("<a:chk:1241031331756904498> Your setup completed successfully!")
                     return
-                await ctx.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
+                await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
                 return
-            await ctx.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
+            await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
             return
-        await ctx.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
+        await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
     except:
         traceback.print_exc()
             
