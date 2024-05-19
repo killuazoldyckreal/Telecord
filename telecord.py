@@ -85,7 +85,7 @@ class DiscordBot(commands.AutoShardedBot):
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, TextChannel) and not message.author.bot):
-            if any(message.content.split(" ",1)[0] == command for command in self.commands_list):
+            if any(message.content.split(" ",1)[0] == command for command in self.command_list):
                 await self.process_commands(message)
             else:
                 await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
