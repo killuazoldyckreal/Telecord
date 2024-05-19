@@ -132,6 +132,7 @@ class DiscordBot(commands.AutoShardedBot):
             if result_telecord:
                 TELEGRAM_CHAT_ID = result_telecord['chatid']
                 activechannel_data = {'id':message.channel.id,'since':int(time.time())}
+                self.activeChannel_dict[str(TELEGRAM_CHAT_ID)] = {'id':message.channel.id,'since':int(time.time())}
                 await save_to_json("jsonfiles/activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
                 header = ""
                 reply_params = None
