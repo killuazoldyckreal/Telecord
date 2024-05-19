@@ -24,7 +24,7 @@ class DiscordBot(commands.AutoShardedBot):
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
         self.telegram_bot = None
-        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help"]
+        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping"]
         
 
     async def setup_hook(self) -> None:
@@ -220,8 +220,9 @@ async def send_bot_help(ctx: commands.Context):
     embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
     embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command.\n\n**Tip**: `Use {func.settings.bot_prefix}prefix commands instead of /slash commands to avoid timeout issues`"
     embed.add_field(name="/help", value="Guide to how to get started", inline=False)
-    embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
     embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
+    embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
+    embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
     await ctx.send(embed=embed)
         
     
@@ -273,7 +274,21 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
         await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
     except:
         traceback.print_exc()
-            
+
+@bot.hybrid_command(name="ping", description="Checks bot latency with discord API.", with_app_command = True)
+async def ping_command(ctx:commands.Context):
+    try:
+        if round(bot.latency * 1000) <= 50:
+            embed=discord.Embed(title="PING", description=f"<a:ping:1241838037290188860> Pong! Latency: **{round(bot.latency *1000)}** ms!", color=0x44ff44)
+        elif round(bot.latency * 1000) <= 100:
+            embed=discord.Embed(title="PING", description=f"<a:ping:1241838037290188860> Pong! Latency: **{round(bot.latency *1000)}** ms!", color=0xffd000)
+        elif round(bot.latency * 1000) <= 200:
+            embed=discord.Embed(title="PING", description=f"<a:ping:1241838037290188860> Pong! Latency: **{round(bot.latency *1000)}** ms!", color=0xff6600)
+        else:
+            embed=discord.Embed(title="PING", description=f"<a:ping:1241838037290188860> Pong! Latency: **{round(bot.latency *1000)}** ms!", color=0x990000)
+        await ctx.send(embed=embed)
+    except:
+        traceback.print_exc()
             
 class Telecord:
     def __init__(self):
