@@ -48,7 +48,6 @@ class DiscordBot(commands.AutoShardedBot):
             raise Exception("Not able to connect MongoDB! Reason:", e)
         
         func.telecorddata = func.MONGO_DB[db_name]['telecorddata']
-        func.telegramdata = func.MONGO_DB[db_name]['telegramdata']
 
     async def on_ready(self):
         print("Telecord has connected to Discord!")
