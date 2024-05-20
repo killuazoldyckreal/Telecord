@@ -25,7 +25,7 @@ class DiscordBot(commands.AutoShardedBot):
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
         self.telegram_bot = None
-        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}unmute", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping"]
+        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}unmute", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping", f"{func.settings.bot_prefix}end"]
         
 
     async def setup_hook(self) -> None:
@@ -285,9 +285,10 @@ async def send_bot_help(ctx: commands.Context):
     embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
     embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command.\n\n**Tip**: `Use {func.settings.bot_prefix}prefix commands instead of /slash commands to avoid timeout issues`"
     embed.add_field(name="/help", value="Guide to how to get started", inline=False)
-    embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
     embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
     embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
+    embed.add_field(name="/end", value="Ends a discord-telegram connection", inline=False)
+    embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
     embed.add_field(name="/unmute", value="Unmute incoming messages from a channel", inline=False)
     await ctx.send(embed=embed)
         
@@ -345,6 +346,23 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
             await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
             return
         await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
+    except:
+        traceback.print_exc()
+
+@bot.hybrid_command(name="end", description="Disconnect your discord-telegram chat.", with_app_command = True)
+async def end_command(ctx: commands.Context):
+    try:
+        if ctx.interaction:
+            interaction : discord.Interaction = ctx.interaction
+            await interaction.response.defer()
+            sendmessage = ctx.interaction.followup
+        else:
+            sendmessage = ctx
+        response = await func.delete_db(func.telecorddata, {"useriddc": ctx.author.id})
+        if response:
+            await sendmessage.send("<a:chk:1241031331756904498> You are disconnected from Telecord successfully!")
+            return
+        await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
     except:
         traceback.print_exc()
 
