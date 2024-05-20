@@ -1,21 +1,47 @@
 # Telecord
 
-Telecord is a Python script that facilitates communication between Discord and Telegram by forwarding messages between the two platforms. It allows users to interact seamlessly across Discord channels and Telegram group chats.
+Telecord is a Discord bot designed to facilitate communication between Discord and Telegram. It allows users to send messages from Telegram to Discord and vice versa, with additional features like muting channels and setting up connections.
 
-## Setup
+## Installation
 
-1. **Discord Bot Token**: Replace `"Discord Bot Token"` with your Discord bot token.
-2. **Telegram Bot Token**: Replace `"Telegram Bot Token"` with your Telegram bot token.
-3. **Discord Channel ID**: Enter your Discord channel ID in `DISCORD_CHANNEL_ID`.
-4. **Telegram Chat ID**: Enter your Telegram group chat ID in `TELEGRAM_CHAT_ID`.
+To use Telecord, follow these steps:
 
-## Usage
+1. Clone the repository:
 
-1. Run the script.
-2. Send messages in Discord or Telegram.
-3. Telecord will forward messages between the platforms automatically.
-4. Discord messages will be forwarded to Telegram group chat, and vice versa.
+   ```bash
+   git clone https://github.com/killuazoldyckreal/Telecord
+   ```
 
+2. Install the required dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Set up your configuration:
+   - Create a `settings.json` file based on the provided `settings.example.json`.
+   - Fill in the required tokens and other configuration details.
+
+4. Run the bot:
+
+   ```bash
+   python main.py
+   ```
+
+## Environment Variables
+
+- Create a `.env` file in the root directory of the Telecord project.
+   - Add the following variables to the `.env` file:
+     ```
+     DCTOKEN="Discord Bot Token"
+     TGTOKEN="Telegram Bot Token"
+     MONGODB_URL="YOUR MONGODB URL"
+     MONGODB_NAME="YOUR DATABASE NAME"
+     ```
+     Replace `"YOUR MONGODB URL"` with the connection string you copied earlier and `"YOUR DATABASE NAME"` with the name of your MongoDB database.
+
+- How to create MongoDB database for free: [Watch](https://youtu.be/jZ5MbbXbs7A)
+   
 ## Dependencies
 
 - [discord.py](https://pypi.org/project/discord.py/): Discord API wrapper for Python.
@@ -23,19 +49,28 @@ Telecord is a Python script that facilitates communication between Discord and T
 - [aiofiles](https://pypi.org/project/aiofiles/): Python library for handling local disk files in asyncio applications.
 - [aiohttp](https://pypi.org/project/aiohttp/): Asynchronous HTTP Client/Server for asyncio and Python.
 - [moviepy](https://pypi.org/project/moviepy/): Python library for video editing.
+- [motor](https://pypi.org/project/motor/): Asynchronous driver for MongoDB.
+- [python-dotenv](https://pypi.org/project/python-dotenv/): Read environment variables from `.env` file.
 
-## Configuration
+## Usage
 
-- **Command Prefix**: Change the command prefix for Discord bot in `command_prefix`.
-- **Discord Channel**: Modify the Discord channel settings in `DISCORD_CHANNEL_ID`.
-- **Telegram Chat**: Adjust the Telegram group chat settings in `TELEGRAM_CHAT_ID`.
+Once Telecord is up and running, you can interact with it using various commands:
 
-## Notes
+- `/start`: Setup your Discord-Telegram connection.
+- `/end`: Disconnect your Discord-Telegram chat.
+- `/mute`: Mute incoming messages from a specific channel.
+- `/unmute`: Unmute incoming messages from a specific channel.
+- `/help`: Get a guide on how to get started.
 
-- The script utilizes asyncio to handle concurrent events from both platforms.
-- Markdown formatting is supported for message content.
-- Messages are forwarded bidirectionally between Discord and Telegram.
-- Ensure proper token and ID configurations for seamless functionality.
+Additionally, you can use the following Discord-specific commands:
+
+- `/ping`: Check the bot's latency with Discord API.
+
+## Features
+
+- Bidirectional communication between Discord and Telegram.
+- Ability to mute/unmute specific channels.
+- Command-based setup for ease of use.
 
 ## Contributors
 
@@ -43,4 +78,4 @@ Telecord is a Python script that facilitates communication between Discord and T
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [Apache License 2.0.](LICENSE).
