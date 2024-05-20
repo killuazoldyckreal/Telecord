@@ -3,3 +3,5 @@ pyTelegramBotAPI
 aiofiles
 aiohttp
 moviepy
+motor
+python-dotenv
