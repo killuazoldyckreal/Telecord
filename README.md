@@ -18,12 +18,7 @@ To use Telecord, follow these steps:
    pip install -r requirements.txt
    ```
 
-3. Set up your configuration:
-   - Create a `settings.json` file based on the provided `settings.example.json`.
-   - Fill in the required tokens and other configuration details.
-
-4. Run the bot:
-
+3. Run the bot:
    ```bash
    python main.py
    ```
