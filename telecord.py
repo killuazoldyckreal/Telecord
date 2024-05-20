@@ -247,7 +247,7 @@ async def unmute_command(ctx: commands.Context, channel: Union[CategoryChannel, 
         update_telecord = { "$pull": { "mutedchannels": channel.id } }
         updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
         if updated:
-            await sendmessage.send(f"<a:chk:1241031331756904498> {ctx.channel.mention} unmuted successfully!")
+            await sendmessage.send(f"<a:chk:1241031331756904498> {channel.mention} unmuted successfully!")
         else:
             await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
     except:
@@ -273,7 +273,7 @@ async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, Te
         update_telecord = { "$addToSet": { "mutedchannels": channel.id } }
         updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
         if updated:
-            await sendmessage.send(f"<a:chk:1241031331756904498> {ctx.channel.mention} muted successfully!")
+            await sendmessage.send(f"<a:chk:1241031331756904498> {channel.mention} muted successfully!")
         else:
             await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
     except:
