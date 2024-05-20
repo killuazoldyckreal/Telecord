@@ -63,7 +63,8 @@ async def get_db(collection, filter: Dict):
 
 # Get all rows that contain specific values
 async def get_any(collection, query: Dict):
-    result = await collection.find(query)
+    cursor = collection.find(query)
+    result = await cursor.to_list(length=None)
     return result
 
 # Get all rows

@@ -55,6 +55,7 @@ class DiscordBot(commands.AutoShardedBot):
         try:
             synced = await self.tree.sync()
             print(f"Synced {len(synced)} command(s)")
+            print(f"Server count {len(self.guilds)}")
             self.session = aiohttp.ClientSession()
         except:
             traceback.print_exc()
