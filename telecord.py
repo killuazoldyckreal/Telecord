@@ -67,6 +67,7 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
                 if message.reference:
                     await self.forward_to_telegram(message, message.reference.message_id)
+                    return
                 await self.forward_to_telegram(message)
 
     async def on_tgmessage(self, message, replied_message):
@@ -152,6 +153,7 @@ class DiscordBot(commands.AutoShardedBot):
                             tg_msgid = self.reply_dict[str(replied_messageid)]
                             reply_params = ReplyParameters(message_id=tg_msgid)
                         except:
+                            traceback.print_exc()
                             pass
 
                     # Check if user has uploaded any media
@@ -174,7 +176,7 @@ class DiscordBot(commands.AutoShardedBot):
 
                     # Check if message has any discord GIF
                     if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
-                        await sendAnimation(self.telegram_bot, message, items, reply_params)
+                        await sendAnimation(self.session, self.telegram_bot, message, items, reply_params)
                         return 
 
                     # Frame the message without any attachments
@@ -281,8 +283,8 @@ async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, Te
         
 @bot.hybrid_command(name="help", description="Show guide to how to get started.", with_app_command = True)
 async def send_bot_help(ctx: commands.Context):
-    embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
-    embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific channel use /mute command.\n\n**Tip**: \n- `Use /start command instead of {func.settings.bot_prefix}start to hide your telegram User ID and Chat ID`\n- `Use {func.settings.bot_prefix}prefix commands to avoid timeout issues.`"
+    embed = discord.Embed(title="Telecord Help Menu!", color=func.settings.embed_color)
+    embed.description = f"A Bot designed to facilitate communication between Discord and Telegram. It allows users to send messages from Telegram to Discord and vice versa. \n\n**How to get started!**\nUse /start command and choose your primary discord channel. Get your telegram User ID and Chat ID from [here](https://telegram.me/discordmessenger_bot)\n\n\n**Note**: After 10min of inactivity your discord channel shift to the primary channel that your chose during the start. However, you can still send reply to the discord user by selecting the reply message.\nTo stop recieving message from a specific channel use /mute command.\n\n**Tip**: \n- `Use /start command instead of {func.settings.bot_prefix}start to hide your telegram User ID and Chat ID`\n- `Use {func.settings.bot_prefix}prefix commands to avoid timeout issues.`"
     embed.add_field(name="/help", value="Guide to how to get started", inline=False)
     embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
     embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)

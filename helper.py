@@ -22,9 +22,10 @@ def generate_random_filename(length=20, extension=None):
     return random_filename
 
 async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
-    media_group = []
+    media_group = []  # List to store media attachments
     try:
         for attachment in message.attachments:
+            # Determine the type of attachment based on its URL extension
             if ".pdf" in attachment.url:
                 media_group.append(types.InputMediaDocument(attachment.url))
             elif ".mp3" in attachment.url or ".m4a" in attachment.url:
@@ -38,70 +39,104 @@ async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
             elif ".gif" in attachment.url:
                 media_group.append(types.InputMediaAnimation(attachment.url))
             else:
+                # Default to InputMediaDocument if the attachment type is unknown
                 media_group.append(types.InputMediaDocument(attachment.url))
+        
+        # Construct the message header with author and channel information
         header = f"{message.author.name} | #{message.channel.name}\n\n`{message.id}` | `{message.channel.id}`"
+        # Escape markdown characters in the header
         content = escapeMD(header)
+        # Send the header as a Markdown-formatted message
         await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode='markdownv2')
+        # Send the media group to the specified Telegram chat
         msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
+        # Save the message ID mapping to a JSON file
+        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+        return msg  # Return the sent message object
+
+    except:
+        traceback.print_exc()
+        return None  # Return None if an exception occurs
+
+async def sendEmoji(tgbot, message, items, reply_params=None):
+    try:
+        msgcontent, header, TELEGRAM_CHAT_ID = items
+        # Check if message has single emoji
+        if len(msgcontent) == 1:
+            header = header + f"\n`{message.id}` | `{message.channel.id}`"
+            caption = escapeMD(header)
+            # Determine if the emoji is a PNG or GIF and send the emoji accordingly
+            if ".png" in msgcontent[0]:
+                msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
+            elif ".gif" in msgcontent[0]:
+                msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
+            # Save the message ID mapping to a JSON file
+            await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+            return msg
+
+        # Send multiple emojis as an album
+        media_group = []
+        for url in msgcontent:
+            if ".png" in url:
+                media_group.append(types.InputMediaPhoto(url))
+            elif ".gif" in url:
+                media_group.append(types.InputMediaAnimation(url))
+        header = header + f"\n`{message.id}` | `{message.channel.id}`"
+        content = escapeMD(header)
+        msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
+        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+        await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
+        return msg
+    except:
+        tracback.print_exc
+        return None
+
+async def sendAnimation(session, tgbot, message, items, reply_params = None):
+    try:
+        msgcontent, header, TELEGRAM_CHAT_ID = items
+        # If the animation is from Tenor, get the direct URL
+        if "tenor" in msgcontent:
+            msgcontent = await get_direct_gif_url(session, msgcontent.strip())
+        header = header + f"\n`{message.id}` | `{message.channel.id}`"
+        caption = escapeMD(header)
+        
+        # Send the animation with the provided caption
+        msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
         await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         return msg
     except:
         traceback.print_exc()
-    return None
-
-async def sendEmoji(tgbot, message, items, reply_params=None):
-    msgcontent, header, TELEGRAM_CHAT_ID = items
-    # Check if message has single emoji
-    if len(msgcontent) == 1:
-        header = header + f"\n`{message.id}` | `{message.channel.id}`"
-        caption = escapeMD(header)
-        if ".png" in msgcontent[0]:
-            msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-        elif ".gif" in msgcontent[0]:
-            msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-    return msg
-
-    # Send multiple emojis as an album
-    media_group = []
-    for url in msgcontent:
-        if ".png" in url:
-            media_group.append(types.InputMediaPhoto(url))
-        elif ".gif" in url:
-            media_group.append(types.InputMediaAnimation(url))
-    header = header + f"\n`{message.id}` | `{message.channel.id}`"
-    content = escapeMD(header)
-    msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-    await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-    await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
-    return msg
-
-async def sendAnimation(tgbot, message, items, reply_params = None):
-    msgcontent, header, TELEGRAM_CHAT_ID = items
-    if "tenor" in msgcontent:
-        msgcontent = await get_direct_gif_url(msgcontent.strip())
-    header = header + f"\n`{message.id}` | `{message.channel.id}`"
-    caption = escapeMD(header)
-    msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
-    await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-    return msg
+        return None
 
 async def getAnimation(tgbot, message):
     try:
+        # Ensure the directory exists or create it
+        if not os.path.exists("telegramdownloads"):
+            os.makedirs("telegramdownloads")
+
         file_info = await tgbot.get_file(message.animation.file_id)
         file_content = await tgbot.download_file(file_info.file_path)
+
+        # Generate random filenames
         filename = generate_random_filename(extension="mp4")
+        gifname = generate_random_filename(extension="gif")
+
         filepath = f"telegramdownloads/{filename}"
+        gifpath = f"telegramdownloads/{gifname}"
+
+        # Write the animation to file
         with open(filepath, "wb") as f:
             f.write(file_content)
+
+        # Convert video to GIF
         videoClip = VideoFileClip(filepath)
-        gifname = generate_random_filename(extension="gif")
-        gifpath = f"telegramdownloads/{gifname}"
         videoClip.write_gif(gifpath)
         return filepath, gifpath
-    except:
+
+    except Exception as e:
+        # Better to catch specific exceptions
         traceback.print_exc()
-    return None, None
+        return None, None
     
     
 
@@ -151,43 +186,15 @@ def getRtext(message):
         non_emoji_text = re.sub(r"<a?:\w+:\d+>", "", message.content)
         only_emoji = len(non_emoji_text.strip()) == 0
         if only_emoji:
-            replaced_message = re.sub(
-                emoji_pattern,
-                lambda match: emoji_replacement.format(match.group(2)) + ",",
-                message.content,
-            )
-            replaced_message = re.sub(
-                animated_emoji_pattern,
-                lambda match: animated_emoji_replacement.format(match.group(2)) + ",",
-                replaced_message,
-            )
+            replaced_message = re.sub(emoji_pattern, lambda match: emoji_replacement.format(match.group(2)) + ",", message.content)
+            replaced_message = re.sub(animated_emoji_pattern, lambda match: animated_emoji_replacement.format(match.group(2)) + ",", replaced_message)
             replaced_message = replaced_message[:-1]
-            r = [
-                url.strip() for url in replaced_message.split(",") if url.strip() != ""
-            ]
+            r = [url.strip() for url in replaced_message.split(",") if url.strip() != ""]
             return r
         else:
-            replaced_message = re.sub(
-                user_pattern,
-                lambda match: user_replacement.format(
-                    message.guild.get_member(int(match.group(1))).name
-                ),
-                non_emoji_text,
-            )
-            replaced_message = re.sub(
-                role_pattern,
-                lambda match: role_replacement.format(
-                    message.guild.get_role(int(match.group(1))).name
-                ),
-                replaced_message,
-            )
-            replaced_message = re.sub(
-                channel_pattern,
-                lambda match: channel_replacement.format(
-                    message.guild.get_channel(int(match.group(1))).name
-                ),
-                replaced_message,
-            )
+            replaced_message = re.sub(user_pattern, lambda match: user_replacement.format(message.guild.get_member(int(match.group(1))).name), non_emoji_text)
+            replaced_message = re.sub(role_pattern, lambda match: role_replacement.format(message.guild.get_role(int(match.group(1))).name), replaced_message)
+            replaced_message = re.sub(channel_pattern, lambda match: channel_replacement.format(message.guild.get_channel(int(match.group(1))).name), replaced_message)
     except:
         traceback.print_exc()
         return None
@@ -204,18 +211,17 @@ async def delete_file(file_path):
         print(f"Error deleting file '{file_path}': {e}")
 
 
-async def get_direct_gif_url(tenor_url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(tenor_url) as response:
-            if response.status == 200:
-                content = await response.text()
-                start_index = content.find("https://media1.tenor.com/")
-                end_index = content.find(".gif", start_index) + 4
-                gif_url = content[start_index:end_index]
-                gifurl = remake_url(gif_url)
-                return gifurl
-            else:
-                return None
+async def get_direct_gif_url(session, tenor_url):
+    async with session.get(tenor_url) as response:
+        if response.status == 200:
+            content = await response.text()
+            start_index = content.find("https://media1.tenor.com/")
+            end_index = content.find(".gif", start_index) + 4
+            gif_url = content[start_index:end_index]
+            gifurl = remake_url(gif_url)
+            return gifurl
+        else:
+            return None
 
 
 def is_valid_url(text):
@@ -267,6 +273,7 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
         "content": "",
         "embeds": [{
             "description": message.text,
+            "color": func.settings.embed_color,
             "author": {
                 "name": author
             }
@@ -306,6 +313,7 @@ async def send_gif(session, channel_id, author, file_path, reply_messageid=None)
             "image": {
                 "url": "attachment://image.gif"
             },
+            "color": func.settings.embed_color,
             "author": {
                 "name": author
             }
