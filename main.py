@@ -1,3 +1,6 @@
+import traceback, asyncio
+from telecord import Telecord
+
 if __name__ == "__main__":
     # Run the bots
     try:
