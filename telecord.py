@@ -66,6 +66,7 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
                 if message.reference:
                     await self.forward_to_telegram(message, message.reference.message_id)
+                    return
                 await self.forward_to_telegram(message)
 
     async def on_tgmessage(self, message, replied_message):
