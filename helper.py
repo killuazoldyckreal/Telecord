@@ -60,7 +60,8 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
         elif ".gif" in msgcontent[0]:
             msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
         await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-    return msg
+        return msg
+    return None
 
     # Send multiple emojis as an album
     media_group = []
@@ -267,6 +268,7 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
         "content": "",
         "embeds": [{
             "description": message.text,
+            "color": func.settings.embed_color,
             "author": {
                 "name": author
             }
@@ -306,6 +308,7 @@ async def send_gif(session, channel_id, author, file_path, reply_messageid=None)
             "image": {
                 "url": "attachment://image.gif"
             },
+            "color": func.settings.embed_color,
             "author": {
                 "name": author
             }
