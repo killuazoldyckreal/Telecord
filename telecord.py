@@ -48,6 +48,7 @@ class DiscordBot(commands.AutoShardedBot):
             raise Exception("Not able to connect MongoDB! Reason:", e)
         
         func.telecorddata = func.MONGO_DB[db_name]['telecorddata']
+        func.telegramdata = func.MONGO_DB[db_name]['telegramdata']
 
     async def on_ready(self):
         print("Telecord has connected to Discord!")
@@ -175,7 +176,7 @@ class DiscordBot(commands.AutoShardedBot):
 
                     # Check if message has any discord GIF
                     if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
-                        await sendAnimation(self.telegram_bot, message, items, reply_params)
+                        await sendAnimation(self.session, self.telegram_bot, message, items, reply_params)
                         return 
 
                     # Frame the message without any attachments
