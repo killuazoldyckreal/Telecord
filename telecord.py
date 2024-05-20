@@ -134,7 +134,6 @@ class DiscordBot(commands.AutoShardedBot):
             if result:
                 for result_telecord in result:
                     mutedchannels = result_telecord['mutedchannels']
-                    print(mutedchannels)
                     if message.channel.id in mutedchannels:
                         return
                     elif message.channel.category:
@@ -283,7 +282,7 @@ async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, Te
 @bot.hybrid_command(name="help", description="Show guide to how to get started.", with_app_command = True)
 async def send_bot_help(ctx: commands.Context):
     embed = discord.Embed(title="How to get started!", color=func.settings.embed_color)
-    embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command.\n\n**Tip**: `Use {func.settings.bot_prefix}prefix commands instead of /slash commands to avoid timeout issues`"
+    embed.description = f"Get you telegram userid and chat id from [here](https://telegram.me/discordmessenger_bot)\nUse /start command and choose your primary discord chatting channel\n\n\nNOTE: You can send messages from Telegram to only 1 discord channel, however you can reply to the messages from different channels by selecting them.\nTo stop recieving message from a specific server/channel use /mute command.\n\n**Tip**: `Use /start command instead of {func.settings.bot_prefix}start to hide your telegram User ID and Chat ID`\n`Use {func.settings.bot_prefix}prefix commands to avoid timeout issues.`"
     embed.add_field(name="/help", value="Guide to how to get started", inline=False)
     embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
     embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
@@ -303,7 +302,7 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
     try:
         if ctx.interaction:
             interaction : discord.Interaction = ctx.interaction
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             sendmessage = ctx.interaction.followup
         else:
             sendmessage = ctx
@@ -318,12 +317,18 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
             }
             response = await func.get_any(func.telecorddata, query)
             if response:
+                if ctx.interaction:
+                	await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!", ephemeral=True)
+                	return
                 await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!")
                 return
             otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
             authdict[telegram_user_id] = {'id': ctx.author.id, 'code': otp, 'since': int(time.time())}
             await telegram_bot.send_message(telegram_chat_id, f"This is your Telecord authentication code:\n `{otp}`", parse_mode="markdownv2")
-            await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
+            if ctx.interaction:
+            	await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min", ephemeral=True)
+            else:
+                await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
 
             def check(m):
                 return m.author == ctx.author and m.channel == ctx.channel and re.match(r'^\d{6}$', m.content.strip())
