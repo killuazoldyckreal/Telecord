@@ -308,8 +308,15 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
             sendmessage = ctx
         response = await is_valid_user(telegram_bot, telegram_chat_id, telegram_user_id)
         if response:
-            result_telecord = await func.get_db(func.telecorddata, {"useriddc": int(ctx.author.id)})
-            if result_telecord:
+            query = {
+                "$or": [
+                    {"useridtg": telegram_user_id},
+                    {"useriddc": ctx.author.id},
+                    {"chatid": telegram_chat_id}
+                ]
+            }
+            response = await func.get_any(func.telecorddata, query)
+            if response:
                 await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!")
                 return
             otp = "".join([str(random.randint(0, 9)) for _ in range(6)])

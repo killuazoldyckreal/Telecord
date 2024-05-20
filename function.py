@@ -55,17 +55,25 @@ async def delete_db(collection:AsyncIOMotorCollection, filter: Dict) -> bool:
     result = await collection.delete_one(filter)
     return result.deleted_count > 0
 
-# Get function
+# Get a row with unique value
 async def get_db(collection, filter: Dict):
     filter = convert_to_int64(filter)
     result = await collection.find_one(filter)
     return result
 
+# Get all rows that contain specific values
+async def get_any(collection, query: Dict):
+    result = await collection.find(query)
+    return result
+
+# Get all rows
 async def get_all_db(collection: AsyncIOMotorCollection) -> List[Dict[str, Any]]:
     cursor = collection.find()
     result = await cursor.to_list(length=None)  # Fetch all documents
     return result
 
+
+# Function for reference purpose
 async def update_telegramdata(entries):    
     # Update example
     filter_telecord = {"useridtg": 37422429}
