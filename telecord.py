@@ -25,7 +25,7 @@ class DiscordBot(commands.AutoShardedBot):
         self.bot_access_user = func.settings.bot_access_user
         self.embed_color = func.settings.embed_color
         self.telegram_bot = None
-        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping"]
+        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}unmute", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping"]
         
 
     async def setup_hook(self) -> None:
@@ -72,6 +72,8 @@ class DiscordBot(commands.AutoShardedBot):
     async def on_tgmessage(self, message, replied_message):
         try:
             result_telecord = await func.get_db(func.telecorddata, {"useridtg": int(message.from_user.id)})
+            if not result_telecord:
+                return
             useriddc = result_telecord['useriddc']
             chatid = result_telecord['chatid']
             activeChannelid = self.activeChannel_dict[str(chatid)]['id']
@@ -131,6 +133,13 @@ class DiscordBot(commands.AutoShardedBot):
             result = await func.get_all_db(func.telecorddata)
             if result:
                 for result_telecord in result:
+                    mutedchannels = result_telecord['mutedchannels']
+                    print(mutedchannels)
+                    if message.channel.id in mutedchannels:
+                        return
+                    elif message.channel.category:
+                        if message.channel.category.id in mutedchannels:
+                            return
                     TELEGRAM_CHAT_ID = result_telecord['chatid']
                     activechannel_data = {'id':message.channel.id,'since':int(time.time())}
                     self.activeChannel_dict[str(TELEGRAM_CHAT_ID)] = {'id':message.channel.id,'since':int(time.time())}
@@ -218,11 +227,55 @@ bot = DiscordBot()
 telegram_bot = TelegramBot(token = func.tokens.tgtoken, discord_bot = bot)
 bot.telegram_bot = telegram_bot
 
+@bot.hybrid_command(name="unmute", description="Unmute incoming messages from a channel.", with_app_command = True)
+@app_commands.describe(channel="Select channel that you want to unmute")
+async def unmute_command(ctx: commands.Context, channel: Union[CategoryChannel, TextChannel]):
+    try:
+        if ctx.interaction:
+            interaction : discord.Interaction = ctx.interaction
+            userid = interaction.user.id
+            await interaction.response.defer()
+            sendmessage = ctx.interaction.followup
+        else:
+            userid = ctx.author.id
+            sendmessage = ctx
+        result_telecord = await func.get_db(func.telecorddata, {"useriddc": userid})
+        if not result_telecord:
+            await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
+            return
+        filter_telecord = {"useriddc": userid}
+        update_telecord = { "$pull": { "mutedchannels": channel.id } }
+        updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
+        if updated:
+            await sendmessage.send(f"<a:chk:1241031331756904498> {ctx.channel.mention} unmuted successfully!")
+        else:
+            await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
+    except:
+        traceback.print_exc()
+
 @bot.hybrid_command(name="mute", description="Mute incoming messages from a channel.", with_app_command = True)
-@app_commands.describe(channel="Selec channel that you want to mute")
+@app_commands.describe(channel="Select channel that you want to mute")
 async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, TextChannel]):
     try:
-        await ctx.send("Coming soon!")
+        if ctx.interaction:
+            interaction : discord.Interaction = ctx.interaction
+            userid = interaction.user.id
+            await interaction.response.defer()
+            sendmessage = ctx.interaction.followup
+        else:
+            userid = ctx.author.id
+            sendmessage = ctx
+        result_telecord = await func.get_db(func.telecorddata, {"useriddc": userid})
+        if not result_telecord:
+            await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
+            return
+        filter_telecord = {"useriddc": userid}
+        update_telecord = { "$addToSet": { "mutedchannels": channel.id } }
+        updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
+        if updated:
+            await sendmessage.send(f"<a:chk:1241031331756904498> {ctx.channel.mention} muted successfully!")
+        else:
+            await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
     except:
         traceback.print_exc()
         
@@ -235,6 +288,7 @@ async def send_bot_help(ctx: commands.Context):
     embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
     embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
     embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
+    embed.add_field(name="/unmute", value="Unmute incoming messages from a channel", inline=False)
     await ctx.send(embed=embed)
         
     
@@ -274,7 +328,7 @@ async def start_command(ctx: commands.Context, channel: TextChannel, telegram_ch
                 return
             authcode = int(reply.content.strip())
             if int(otp) == authcode:
-                insert_telecord = {"useriddc": ctx.author.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id}
+                insert_telecord = {"useriddc": ctx.author.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id, "mutedchannels":[]}
                 response = await func.insert_db(func.telecorddata, insert_telecord)
                 if response:
                     await sendmessage.send("<a:chk:1241031331756904498> Your setup completed successfully!")
