@@ -152,6 +152,7 @@ class DiscordBot(commands.AutoShardedBot):
                             tg_msgid = self.reply_dict[str(replied_messageid)]
                             reply_params = ReplyParameters(message_id=tg_msgid)
                         except:
+                            traceback.print_exc()
                             pass
 
                     # Check if user has uploaded any media
