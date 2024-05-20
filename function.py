@@ -61,6 +61,11 @@ async def get_db(collection, filter: Dict):
     result = await collection.find_one(filter)
     return result
 
+async def get_all_db(collection: AsyncIOMotorCollection) -> List[Dict[str, Any]]:
+    cursor = collection.find()
+    result = await cursor.to_list(length=None)  # Fetch all documents
+    return result
+
 async def update_telegramdata(entries):    
     # Update example
     filter_telecord = {"useridtg": 37422429}
