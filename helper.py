@@ -104,16 +104,6 @@ async def sendAnimation(session, tgbot, message, items, reply_params = None):
         traceback.print_exc()
         return None
 
-def getExtension(content_type):
-    # Map content types to file extensions
-    extensions = {
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-        'image/svg+xml': 'svg',
-        'image/gif': 'gif'
-    }
-    return extensions.get(content_type, '')
-
 async def saveFile(filepath, content):
     try:
         async with aiofiles.open(filepath, mode='wb') as file:
@@ -123,35 +113,14 @@ async def saveFile(filepath, content):
         traceback.print_exc()
         return False
 
-async def downloadFile(session, url):
-    async with session.get(url) as response:
-        if response.status == 200:
-            content_type = response.headers['Content-Type']
-            file_extension = getExtension(content_type)
-
-            if file_extension!='':
-                filename = generate_random_filename(extension=file_extension)
-                save_path = os.path.join("telegramdownloads", filename)
-                content = await response.read()
-                await saveFile(save_path, content)
-                return save_path
-    return None
-
 async def getSavepath(session, file_id, tgbot, animation: bool = False):
     # Get the file information using the file ID
     file_info = await tgbot.get_file(file_id)
     filepath = file_info.file_path
     file_extension = filepath.split('.')[-1]
     downloaded_file = await tgbot.download_file(filepath)
-    #mime = magic.Magic(mime=True)
-    #file_mime_type = mime.from_buffer(downloaded_file)
     filename = generate_random_filename(extension=file_extension)
     save_path = os.path.join("telegramdownloads", filename)
-    
-
-    # Construct the URL to download the file
-    #file_url = f'https://api.telegram.org/file/bot{func.tokens.tgtoken}/{filepath}'
-    #save_path = await downloadFile(session, file_url)
     await saveFile(save_path, downloaded_file)
     
 
@@ -219,7 +188,6 @@ async def getTGMedia(session, tgbot, message, animation: bool = False):
     
 def escapeMD(text):
     escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    markdown_symbols = ["-", "|", "#", "+", "."]
     escaped_text = ""
 
     for char in text:
@@ -239,13 +207,6 @@ def remake_url(original_url):
         gifurl = new_url.replace("/m/", "/")
         return gifurl
     return None
-
-
-async def download_file_size(session, url):
-    async with session.get(url) as response:
-        response.raise_for_status()
-        content = await response.read()
-        return len(content), content
 
 
 def getRtext(message):
