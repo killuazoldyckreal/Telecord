@@ -172,9 +172,9 @@ class DiscordBot(commands.AutoShardedBot):
                         if response:
                             return 
                         
-                    excaped_author = message.author.display_name
-                    escaped_channnel = message.channel.name
-                    header = header + f"__*{escapeMD(message.author.display_name)}* \\| _#{escapeMD(message.channel.name)}_ __\n"
+                    excaped_author = escapeMD(message.author.display_name)
+                    escaped_channnel = escapeMD(f"#{message.channel.name}")
+                    header = header + f"__*{excaped_author}* \\| _{escaped_channnel}_ __\n"
 
                     # Check if message has any emoji, mentions for channels, roles or members
                     msgcontent = getRtext(message)
@@ -191,7 +191,7 @@ class DiscordBot(commands.AutoShardedBot):
                         return 
 
                     # Frame the message without any attachments
-                    text = f"{escape(msgcontent)}\n\n`{message.id}` \\| `{message.channel.id}`"
+                    text = f"{escapeMD(msgcontent)}\n\n`{message.id}` \\| `{message.channel.id}`"
                     content = header + text
                     msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
                     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
