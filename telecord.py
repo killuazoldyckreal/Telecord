@@ -118,8 +118,9 @@ class DiscordBot(commands.AutoShardedBot):
                     await delete_file(filepath)
                 else:
                     for i in filepath:
-                        await delete_file(filepath)
+                        await delete_file(i)
                 if msg_id:
+                    self.reply_dict[str(msg_id)] = message.message_id
                     await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
                 return
             
@@ -132,6 +133,7 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                 msg_id = await send_reply(self.session, activeChannelid, message, author, replied_msgID)
             if msg_id:
+                self.reply_dict[str(msg_id)] = message.message_id
                 await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
         except:
             traceback.print_exc()
@@ -169,8 +171,10 @@ class DiscordBot(commands.AutoShardedBot):
                         response = await sendAttachments(message, self.telegram_bot, adata, reply_params)
                         if response:
                             return 
-
-                    header = header + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
+                        
+                    excaped_author = message.author.display_name
+                    escaped_channnel = message.channel.name
+                    header = header + f"__*{escapeMD(message.author.display_name)}* \\| _#{escapeMD(message.channel.name)}_ __\n"
 
                     # Check if message has any emoji, mentions for channels, roles or members
                     msgcontent = getRtext(message)
@@ -187,9 +191,8 @@ class DiscordBot(commands.AutoShardedBot):
                         return 
 
                     # Frame the message without any attachments
-                    text = f"{escape(msgcontent)}\n\n`{message.id}` | `{message.channel.id}`"
+                    text = f"{escape(msgcontent)}\n\n`{message.id}` \\| `{message.channel.id}`"
                     content = header + text
-                    content = escapeMD(content)
                     msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
                     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         except:
@@ -217,7 +220,7 @@ class TelegramBot(AsyncTeleBot):
         async def send_chatid(message):
             await self.reply_to(message, f"Chat ID: `{message.chat.id}`", parse_mode="markdownv2")
 
-        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation'])
+        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation', 'audio', 'voice', 'video', 'document'])
         async def echo_all(message):
             replied_message = None
             if message.reply_to_message:
