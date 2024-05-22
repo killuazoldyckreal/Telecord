@@ -62,7 +62,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
         msgcontent, header, TELEGRAM_CHAT_ID = items
         # Check if message has single emoji
         if len(msgcontent) == 1:
-            caption = header + f"\n`{message.id}` | `{message.channel.id}`"
+            caption = header + f"\n`{message.id}` \\| `{message.channel.id}`"
             # Determine if the emoji is a PNG or GIF and send the emoji accordingly
             if ".png" in msgcontent[0]:
                 msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
@@ -79,8 +79,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
                 media_group.append(types.InputMediaPhoto(url))
             elif ".gif" in url:
                 media_group.append(types.InputMediaAnimation(url))
-        header = header + f"\n`{message.id}` | `{message.channel.id}`"
-        content = escapeMD(header)
+        content = header + f"\n`{message.id}` \\| `{message.channel.id}`"
         msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
         await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
@@ -95,7 +94,7 @@ async def sendAnimation(session, tgbot, message, items, reply_params = None):
         # If the animation is from Tenor, get the direct URL
         if "tenor" in msgcontent:
             msgcontent = await get_direct_gif_url(session, msgcontent.strip())
-        caption = header + f"\n`{message.id}` | `{message.channel.id}`"
+        caption = header + f"\n`{message.id}` \\| `{message.channel.id}`"
         
         # Send the animation with the provided caption
         msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
@@ -219,7 +218,7 @@ async def getTGMedia(session, tgbot, message, animation: bool = False):
         return None, None
     
 def escapeMD(text):
-    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '. ', '!']
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     markdown_symbols = ["-", "|", "#", "+", "."]
     escaped_text = ""
 
