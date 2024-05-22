@@ -2,6 +2,7 @@ import os, aiofiles, re, aiohttp, string
 import discord,random, json, traceback
 from telebot.util import escape
 from telebot import types
+from typing import Union
 from moviepy.editor import VideoFileClip
 import function as func 
 BOT_TOKEN = func.tokens.dctoken
@@ -43,9 +44,7 @@ async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
                 media_group.append(types.InputMediaDocument(attachment.url))
         
         # Construct the message header with author and channel information
-        header = f"{message.author.name} | #{message.channel.name}\n\n`{message.id}` | `{message.channel.id}`"
-        # Escape markdown characters in the header
-        content = escapeMD(header)
+        content = f"{escapeMD(message.author.name)} \\| \\#{escapeMD(message.channel.name)}\n\n`{message.id}` \\| `{message.channel.id}`"
         # Send the header as a Markdown-formatted message
         await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode='markdownv2')
         # Send the media group to the specified Telegram chat
@@ -63,8 +62,7 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
         msgcontent, header, TELEGRAM_CHAT_ID = items
         # Check if message has single emoji
         if len(msgcontent) == 1:
-            header = header + f"\n`{message.id}` | `{message.channel.id}`"
-            caption = escapeMD(header)
+            caption = header + f"\n`{message.id}` | `{message.channel.id}`"
             # Determine if the emoji is a PNG or GIF and send the emoji accordingly
             if ".png" in msgcontent[0]:
                 msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
@@ -97,8 +95,7 @@ async def sendAnimation(session, tgbot, message, items, reply_params = None):
         # If the animation is from Tenor, get the direct URL
         if "tenor" in msgcontent:
             msgcontent = await get_direct_gif_url(session, msgcontent.strip())
-        header = header + f"\n`{message.id}` | `{message.channel.id}`"
-        caption = escapeMD(header)
+        caption = header + f"\n`{message.id}` | `{message.channel.id}`"
         
         # Send the animation with the provided caption
         msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
@@ -108,44 +105,126 @@ async def sendAnimation(session, tgbot, message, items, reply_params = None):
         traceback.print_exc()
         return None
 
-async def getAnimation(tgbot, message):
+def getExtension(content_type):
+    # Map content types to file extensions
+    extensions = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/svg+xml': 'svg',
+        'image/gif': 'gif'
+    }
+    return extensions.get(content_type, '')
+
+async def saveFile(filepath, content):
+    try:
+        async with aiofiles.open(filepath, mode='wb') as file:
+            await file.write(content)
+        return True
+    except:
+        traceback.print_exc()
+        return False
+
+async def downloadFile(session, url):
+    async with session.get(url) as response:
+        if response.status == 200:
+            content_type = response.headers['Content-Type']
+            file_extension = getExtension(content_type)
+
+            if file_extension!='':
+                filename = generate_random_filename(extension=file_extension)
+                save_path = os.path.join("telegramdownloads", filename)
+                content = await response.read()
+                await saveFile(save_path, content)
+                return save_path
+    return None
+
+async def getSavepath(session, file_id, tgbot, animation: bool = False):
+    # Get the file information using the file ID
+    file_info = await tgbot.get_file(file_id)
+    filepath = file_info.file_path
+    file_extension = filepath.split('.')[-1]
+    downloaded_file = await tgbot.download_file(filepath)
+    #mime = magic.Magic(mime=True)
+    #file_mime_type = mime.from_buffer(downloaded_file)
+    filename = generate_random_filename(extension=file_extension)
+    save_path = os.path.join("telegramdownloads", filename)
+    
+
+    # Construct the URL to download the file
+    #file_url = f'https://api.telegram.org/file/bot{func.tokens.tgtoken}/{filepath}'
+    #save_path = await downloadFile(session, file_url)
+    await saveFile(save_path, downloaded_file)
+    
+
+    if save_path:
+        if animation:
+            # Convert video to GIF
+            gifname = generate_random_filename(extension=".gif")
+            gifpath = os.path.join("telegramdownloads", gifname)
+            videoClip = VideoFileClip(save_path)
+            videoClip.write_gif(gifpath)
+            return save_path, gifpath
+        return save_path
+    return None
+
+async def getTGMedia(session, tgbot, message, animation: bool = False):
     try:
         # Ensure the directory exists or create it
         if not os.path.exists("telegramdownloads"):
             os.makedirs("telegramdownloads")
 
-        file_info = await tgbot.get_file(message.animation.file_id)
-        file_content = await tgbot.download_file(file_info.file_path)
+        if message.animation:
+            if message.animation.file_size > 1048576:
+                filepath = await getSavepath(session, message.animation.file_id, tgbot)
+            else:
+                videopath, filepath = await getSavepath(session, message.animation.file_id, tgbot, True)
+                await delete_file(videopath)
+            return filepath
 
-        # Generate random filenames
-        filename = generate_random_filename(extension="mp4")
-        gifname = generate_random_filename(extension="gif")
+        elif message.audio:
+            filepath = await getSavepath(session, message.audio.file_id, tgbot)
+            filename = message.audio.file_name
+            new_file_path = os.path.join("telegramdownloads", filename)
+            os.rename(filepath, new_file_path)
+            return new_file_path
 
-        filepath = f"telegramdownloads/{filename}"
-        gifpath = f"telegramdownloads/{gifname}"
+        elif message.video:
+            filepath = await getSavepath(session, message.video.file_id, tgbot)
+            return filepath
 
-        # Write the animation to file
-        with open(filepath, "wb") as f:
-            f.write(file_content)
+        elif message.voice:
+            filepath = await getSavepath(session, message.voice.file_id, tgbot)
+            filename = message.voice.file_name
+            new_file_path = os.path.join("telegramdownloads", filename)
+            os.rename(filepath, new_file_path)
+            return new_file_path
+        
+        elif message.photo:
+            filepaths = []
+            for photo in message.photo:
+                filepath = await getSavepath(session, photo.file_id, tgbot)
+                filepaths.append(filepath)
+            return filepaths
 
-        # Convert video to GIF
-        videoClip = VideoFileClip(filepath)
-        videoClip.write_gif(gifpath)
-        return filepath, gifpath
+        elif message.document:
+            filepath = await getSavepath(session, message.document.file_id, tgbot)
+            return filepath
+        
+        else:
+            return None
+
 
     except Exception as e:
-        # Better to catch specific exceptions
         traceback.print_exc()
         return None, None
     
-    
-
 def escapeMD(text):
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '. ', '!']
     markdown_symbols = ["-", "|", "#", "+", "."]
     escaped_text = ""
 
     for char in text:
-        if char in markdown_symbols:
+        if char in escape_chars:
             escaped_text += "\\" + char
         else:
             escaped_text += char
@@ -296,37 +375,48 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
             print(f"Failed to send message: {response.status}")
             return None
 
-async def send_gif(session, channel_id, author, file_path, reply_messageid=None):
+async def send_media(session, channel_id, author, file_path: Union[list, str], reply_messageid=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
         "Authorization": f"Bot {BOT_TOKEN}"
     }
 
     data = aiohttp.FormData()
-    file = open(file_path, 'rb')
-    data.add_field('files[0]', file, filename='image.gif', content_type='image/gif')
-    
+    image_extensions = ['.png', '.jpg', '.jpeg', '.gif']
+
     # Create the payload JSON as a separate field
-    payload_json = {
-        "content": "",
-        "embeds": [{
-            "image": {
-                "url": "attachment://image.gif"
-            },
-            "color": func.settings.embed_color,
-            "author": {
-                "name": author
-            }
-        }]
-    }
+    payload_json = {"content": ""}
     if reply_messageid:
         payload_json["message_reference"] = {
             "message_id": reply_messageid
         }
+    
+    files = []
+
+    if isinstance(file_path, str):
+        file = open(file_path, 'rb')
+        files.append(file)
+        file_name = os.path.basename(file_path)
+        file_extension = "."+file_name.rsplit(".",1)[1]
+        if file_extension in image_extensions:
+            payload_json["content"] = f"by {author}"
+        data.add_field('files[0]', file, filename=file_name)
+
+    elif isinstance(file_path, list):
+        payload_json["content"] = f"by {author}"
+        index = 0
+        for i in range(2, len(file_path), 3):
+            file = open(file_path[i], 'rb')
+            file_name = os.path.basename(file_path[i])
+            files.append(file)
+            data.add_field(f'files{index}', file, filename=file_name)
+            index+=1
+            
     data.add_field('payload_json', json.dumps(payload_json))
 
     async with session.post(url, data=data, headers=headers) as response:
-        file.close()
+        for file in files:
+            file.close()
         if response.status == 200:
             response_json = await response.json()
             m_id = response_json.get('id')

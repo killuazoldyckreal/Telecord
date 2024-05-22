@@ -98,23 +98,30 @@ class DiscordBot(commands.AutoShardedBot):
                     ids = [int(id.strip()) for id in last_line.split("|")]
                     replied_msgID, channelid = ids          
             
+            animation = False
             # Check if message has GIF file
             if message.animation:
-                filename, gifname = await getAnimation(self.telegram_bot, message)
-                if filename:
-                    if replied_msgID:
-                        activechannel_data = {'id':channelid,'since':int(time.time())}
-                        await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                        msg_id = await send_gif(self.session, channelid, author, gifname, replied_msgID)
-                    else:
-                        activechannel_data = {'id':activeChannelid,'since':int(time.time())}
-                        await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                        msg_id = await send_gif(self.session, activeChannelid, author, gifname, replied_msgID)
-                    await delete_file(filename)
-                    await delete_file(gifname)
-                    if msg_id:
-                        await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
-                        return msg_id
+                animation=True
+
+            filepath = await getTGMedia(self.session, self.telegram_bot, message, animation)
+
+            if filepath:
+                if replied_msgID:
+                    activechannel_data = {'id':channelid,'since':int(time.time())}
+                    await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
+                    msg_id = await send_media(self.session, channelid, author, filepath, replied_msgID)
+                else:
+                    activechannel_data = {'id':activeChannelid,'since':int(time.time())}
+                    await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
+                    msg_id = await send_media(self.session, activeChannelid, author, filepath, replied_msgID)
+                if isinstance(filepath, str):
+                    await delete_file(filepath)
+                else:
+                    for i in filepath:
+                        await delete_file(i)
+                if msg_id:
+                    self.reply_dict[str(msg_id)] = message.message_id
+                    await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
                 return
             
             if replied_msgID:
@@ -126,6 +133,7 @@ class DiscordBot(commands.AutoShardedBot):
                 await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
                 msg_id = await send_reply(self.session, activeChannelid, message, author, replied_msgID)
             if msg_id:
+                self.reply_dict[str(msg_id)] = message.message_id
                 await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
         except:
             traceback.print_exc()
@@ -163,8 +171,10 @@ class DiscordBot(commands.AutoShardedBot):
                         response = await sendAttachments(message, self.telegram_bot, adata, reply_params)
                         if response:
                             return 
-
-                    header = header + f"__*{message.author.display_name}* | _#{message.channel.name}_ __\n"
+                        
+                    excaped_author = message.author.display_name
+                    escaped_channnel = message.channel.name
+                    header = header + f"__*{escapeMD(message.author.display_name)}* \\| _#{escapeMD(message.channel.name)}_ __\n"
 
                     # Check if message has any emoji, mentions for channels, roles or members
                     msgcontent = getRtext(message)
@@ -181,9 +191,8 @@ class DiscordBot(commands.AutoShardedBot):
                         return 
 
                     # Frame the message without any attachments
-                    text = f"{escape(msgcontent)}\n\n`{message.id}` | `{message.channel.id}`"
+                    text = f"{escape(msgcontent)}\n\n`{message.id}` \\| `{message.channel.id}`"
                     content = header + text
-                    content = escapeMD(content)
                     msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
                     await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
         except:
@@ -211,7 +220,7 @@ class TelegramBot(AsyncTeleBot):
         async def send_chatid(message):
             await self.reply_to(message, f"Chat ID: `{message.chat.id}`", parse_mode="markdownv2")
 
-        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation'])
+        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation', 'audio', 'voice', 'video', 'document'])
         async def echo_all(message):
             replied_message = None
             if message.reply_to_message:
@@ -391,13 +400,12 @@ async def ping_command(ctx:commands.Context):
             
 class Telecord:
     def __init__(self):
-        self.dctoken = func.tokens.dctoken
         self.discord_bot = bot
         self.telegram_bot = telegram_bot
 
     async def dcstart(self):
         try:
-        	await self.discord_bot.start(self.dctoken)
+        	await self.discord_bot.start(func.tokens.dctoken)
         except:
             traceback.print_exc()
 
