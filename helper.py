@@ -80,9 +80,9 @@ async def sendEmoji(tgbot, message, items, reply_params=None):
             elif ".gif" in url:
                 media_group.append(types.InputMediaAnimation(url))
         content = header + f"\n`{message.id}` \\| `{message.channel.id}`"
-        msg = await self.tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
+        msg = await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
         await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-        await self.tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
+        await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
         return msg
     except:
         tracback.print_exc
@@ -127,7 +127,7 @@ async def getSavepath(session, file_id, tgbot, animation: bool = False):
     if save_path:
         if animation:
             # Convert video to GIF
-            gifname = generate_random_filename(extension=".gif")
+            gifname = generate_random_filename(extension="gif")
             gifpath = os.path.join("telegramdownloads", gifname)
             videoClip = VideoFileClip(save_path)
             videoClip.write_gif(gifpath)
