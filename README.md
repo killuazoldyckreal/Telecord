@@ -30,12 +30,7 @@ To use Telecord, follow these steps:
      ```
      DCTOKEN="Discord Bot Token"
      TGTOKEN="Telegram Bot Token"
-     MONGODB_URL="YOUR MONGODB URL"
-     MONGODB_NAME="YOUR DATABASE NAME"
      ```
-     Replace `"YOUR MONGODB URL"` with the connection string you copied earlier and `"YOUR DATABASE NAME"` with the name of your MongoDB database.
-
-- How to create MongoDB database for free: [Watch](https://youtu.be/jZ5MbbXbs7A)
    
 ## Dependencies
 
@@ -43,23 +38,36 @@ To use Telecord, follow these steps:
 - [pyTelegramBotAPI](https://pypi.org/project/pyTelegramBotAPI/): Telegram Bot API wrapper for Python.
 - [aiofiles](https://pypi.org/project/aiofiles/): Python library for handling local disk files in asyncio applications.
 - [aiohttp](https://pypi.org/project/aiohttp/): Asynchronous HTTP Client/Server for asyncio and Python.
-- [moviepy](https://pypi.org/project/moviepy/): Python library for video editing.
-- [motor](https://pypi.org/project/motor/): Asynchronous driver for MongoDB.
 - [python-dotenv](https://pypi.org/project/python-dotenv/): Read environment variables from `.env` file.
+- [Markdown](https://pypi.org/project/Markdown/): This is a Python implementation of John Gruber's Markdown.
+- [aiosqlite](https://pypi.org/project/aiosqlite/): Replicates the standard sqlite3 module, but with async versions.
 
 ## Usage
 
 Once Telecord is up and running, you can interact with it using various commands:
 
-- `/start`: Setup your Discord-Telegram connection.
-- `/end`: Disconnect your Discord-Telegram chat.
-- `/mute`: Mute incoming messages from a specific channel.
-- `/unmute`: Unmute incoming messages from a specific channel.
-- `/help`: Get a guide on how to get started.
+### Telegram-side commands
+- `/start`: Starts the Telecord bot
+- `/changechannel`: Change Discord chatting channel
+- `/link`: Command to link Discord server
+- `/unlink`: Command to unlink Discord server
+- `/mute`: Mute a Discord channel
+- `/muteuser`: Mute a Discord user
+- `/forcemute`: Force mute a Discord channel
+- `/unmute`: Unmute a Discord channel
+- `/unmuteuser`: Unmute a Discord user
+- `/privacy`: Toggle send/stop your messages to discord
+- `/help`: Get list of Telecord bot commands
 
-Additionally, you can use the following Discord-specific commands:
-
-- `/ping`: Check the bot's latency with Discord API.
+### Discord-side commands
+- `/help`: Shows Telecord help menu
+- `/info`: Show info about connected Telegram Group
+- `/link`: Setup discord-telegram connection
+- `/unlink`: Revoke discord-telegram connection
+- `/mute <channel>`: Stop forwading messages of the channel
+- `/unmute <channel>`: Starts forwading messages of the channel
+- `/ping`: Checks bot latency with discord API
+- `/privacy <on/off>`: Stop forwading your message to telegram
 
 ## Features
 

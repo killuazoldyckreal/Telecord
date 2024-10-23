@@ -1,54 +1,32 @@
-import aiohttp, random
+import aiohttp
 import discord
-from discord.ext import tasks, commands
-from discord import app_commands, Intents, TextChannel, Message, Interaction, CategoryChannel
-import re, time, asyncio
+from discord.ext import commands
+from discord import app_commands, Intents, TextChannel, Message
+import os, re, time, asyncio
 import traceback
-import telebot
-from typing import Union
+from telebot.asyncio_helper import ApiTelegramException
 from telebot.async_telebot import AsyncTeleBot
-from telebot.util import escape
-from telebot.types import ReplyParameters
-import function as func
-from motor.motor_asyncio import (
-    AsyncIOMotorClient,
-    AsyncIOMotorCollection,
-)
+from telebot.types import ReplyParameters, LinkPreviewOptions
+from telebot import asyncio_filters
+from database import Database
 from helper import *
+from dotenv import load_dotenv
 
-authdict = {}
-        
+load_dotenv()
+DCTOKEN = os.getenv("DCTOKEN")
+TGTOKEN = os.getenv("TGTOKEN")
+
+channels = {}
+
 class DiscordBot(commands.AutoShardedBot):
     def __init__(self):
-        super().__init__(command_prefix = func.settings.bot_prefix, intents = Intents.all(), help_command= None)
-        self.embed_color = func.settings.embed_color
-        self.bot_access_user = func.settings.bot_access_user
-        self.embed_color = func.settings.embed_color
+        super().__init__(command_prefix = "/", intents = Intents.all(), help_command= None)
         self.telegram_bot = None
-        self.command_list = [f"{func.settings.bot_prefix}start", f"{func.settings.bot_prefix}unmute", f"{func.settings.bot_prefix}mute", f"{func.settings.bot_prefix}help", f"{func.settings.bot_prefix}ping", f"{func.settings.bot_prefix}end"]
-        
+        self.command_list = ["/help", "/info", "/link", "/unlink", "/mute", "/unmute", "/ping", "/privacy"]
 
     async def setup_hook(self) -> None:
-        # Connecting to MongoDB
-        await self.connect_db()
-        self.reply_dict = await load_user_data("jsonfiles/replydict.json")
-        self.message_dict = await load_user_data("jsonfiles/users.json")
-        self.activeChannel_dict = await load_user_data("jsonfiles/activechannels.json")
-
-    async def connect_db(self) -> None:
-        if not ((db_name := func.tokens.mongodb_name) and (db_url := func.tokens.mongodb_url)):
-            raise Exception("MONGODB_NAME and MONGODB_URL can't not be empty in settings.json")
-
-        try:
-            func.MONGO_DB = AsyncIOMotorClient(host=db_url)
-            await func.MONGO_DB.server_info()
-            print("Successfully connected to MongoDB!")
-
-        except Exception as e:
-            raise Exception("Not able to connect MongoDB! Reason:", e)
-        
-        func.telecorddata = func.MONGO_DB[db_name]['telecorddata']
-        func.telegramdata = func.MONGO_DB[db_name]['telegramdata']
+        self.db = Database("telecord.db")
+        await self.db.create_table()
 
     async def on_ready(self):
         print("Telecord has connected to Discord!")
@@ -62,324 +40,672 @@ class DiscordBot(commands.AutoShardedBot):
 
     async def on_message(self, message):
         if (message.guild and isinstance(message.channel, TextChannel) and not message.author.bot):
-            if any(message.content.split(" ",1)[0] == command for command in self.command_list):
-                await self.process_commands(message)
-            else:
-                await save_to_json("jsonfiles/users.json", message.author.id, message.author.name)
-                if message.reference:
-                    await self.forward_to_telegram(message, message.reference.message_id)
-                    return
-                await self.forward_to_telegram(message)
+            try:
+                if any(message.content.split(" ",1)[0] == command for command in self.command_list):
+                    await self.process_commands(message)
+                else:
+                    if message.reference:
+                        await self.forward_to_telegram(message, message.reference.message_id)
+                    else:
+                        await self.forward_to_telegram(message)
+            except:
+                traceback.print_exc()
 
-    async def on_tgmessage(self, message, replied_message):
+    async def on_tgmessage(self, message, replied_message=None):
         try:
-            result_telecord = await func.get_db(func.telecorddata, {"useridtg": int(message.from_user.id)})
-            if not result_telecord:
+            reply_data = None
+            channel_id = None
+            embed_description = ""
+            author = message.from_user
+            content = ""
+            if author.is_bot and author.username.lower()!="telecord_userbot":
                 return
-            useriddc = result_telecord['useriddc']
-            chatid = result_telecord['chatid']
-            activeChannelid = self.activeChannel_dict[str(chatid)]['id']
-            timestmp = self.activeChannel_dict[str(chatid)]['since']
-            if int(time.time()) - timestmp > 600:
-                activeChannelid = result_telecord['channelid']
-            author = self.message_dict[str(useriddc)]
-
-            # Check if message is a reply
-            replied_msgID = None
-            if replied_message:
+            author_name = author.username
+            if replied_message and replied_message.from_user.is_bot:
                 if replied_message.text:
-                    #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.text).group())
-                    last_line = replied_message.text.strip().split("\n")[-1]
-                    ids = [int(id.strip()) for id in last_line.split("|")]
-                    replied_msgID, channelid = ids
+                    reply_content = remove_reply_quote(replied_message.html_text)
+                    reply_url = getreplyurl(reply_content)
+                    reply_data = mdata(reply_url)
+                    channel_id = reply_data.channel_id
                 elif replied_message.caption:
-                    #replied_msgID = int(re.search(r"\b\d+\b(?![\s\S]*\b\d+\b)", replied_message.caption).group()) 
-                    last_line = replied_message.caption.strip().split("\n")[-1]
-                    ids = [int(id.strip()) for id in last_line.split("|")]
-                    replied_msgID, channelid = ids          
-            
-            animation = False
-            # Check if message has GIF file
+                    reply_url = getreplyurl(replied_message.caption)
+                    reply_data = mdata(reply_url)
+                    channel_id = reply_data.channel_id
+            elif replied_message:
+                if replied_message.text:
+                    content = f"╭──**@{replied_message.from_user.first_name[:250]}** *{replied_message.text[:50]}...*\n"
+                elif replied_message.caption:
+                    content = f"╭──**@{replied_message.from_user.first_name[:250]}** *{replied_message.caption[:50]}...*\n"
+            if not channel_id:
+                data = await bot.db.getActivech(chatid=message.chat.id)
+                if not data:
+                    return
+                channel_id, guild_id = data
+            embed = discord.Embed(title = message.from_user.first_name[:250], color=discord.Color.blue())
+            if message.text:
+                embed_description+= (html_to_markdown(message.html_text)+"\n")
+            elif message.caption:
+                embed_description+= (html_to_markdown(message.html_caption)+"\n")
             if message.animation:
-                animation=True
-
-            filepath = await getTGMedia(self.session, self.telegram_bot, message, animation)
-
-            if filepath:
-                if replied_msgID:
-                    activechannel_data = {'id':channelid,'since':int(time.time())}
-                    await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                    msg_id = await send_media(self.session, channelid, author, filepath, replied_msgID)
-                else:
-                    activechannel_data = {'id':activeChannelid,'since':int(time.time())}
-                    await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                    msg_id = await send_media(self.session, activeChannelid, author, filepath, replied_msgID)
-                if isinstance(filepath, str):
-                    await delete_file(filepath)
-                else:
-                    for i in filepath:
-                        await delete_file(i)
-                if msg_id:
-                    self.reply_dict[str(msg_id)] = message.message_id
-                    await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
+                embed_description+= "Some GIF\n"
+            if message.audio:
+                embed_description+= "🔉Some Audio\n"
+            if message.document:
+                embed_description+= "📄Some Document\n"
+            if message.photo:
+                embed_description+= "🖼Some Photo\n"
+            if message.sticker:
+                embed_description+= "🐾Some Sticker\n"
+            if message.story:
+                embed_description+= "📲Some Story\n"
+            if message.video:
+                embed_description+= "🎬Some Video\n"
+            if message.voice:
+                embed_description+= "🎤Some VoiceNote\n"
+            if embed_description=="":
                 return
-            
-            if replied_msgID:
-                activechannel_data = {'id':channelid,'since':int(time.time())}
-                await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                msg_id = await send_reply(self.session, channelid, message, author, replied_msgID)
-            else:
-                activechannel_data = {'id':activeChannelid,'since':int(time.time())}
-                await save_to_json("jsonfiles/activechannels.json", chatid, activechannel_data)
-                msg_id = await send_reply(self.session, activeChannelid, message, author, replied_msgID)
-            if msg_id:
-                self.reply_dict[str(msg_id)] = message.message_id
-                await save_to_json("jsonfiles/replydict.json", msg_id, message.message_id)
+            embed.description = embed_description
+            await send_message(self.session, DCTOKEN, channel_id, content=content, embed=embed, reply=reply_data)
         except:
             traceback.print_exc()
-
+            
+    @limit_calls_per_second(max_calls=4)
     async def forward_to_telegram(self, message: Message, replied_messageid: int = None):
         try:
-            result = await func.get_all_db(func.telecorddata)
-            if result:
-                for result_telecord in result:
-                    mutedchannels = result_telecord['mutedchannels']
-                    if message.channel.id in mutedchannels:
-                        return
-                    elif message.channel.category:
-                        if message.channel.category.id in mutedchannels:
-                            return
-                    TELEGRAM_CHAT_ID = result_telecord['chatid']
-                    activechannel_data = {'id':message.channel.id,'since':int(time.time())}
-                    self.activeChannel_dict[str(TELEGRAM_CHAT_ID)] = {'id':message.channel.id,'since':int(time.time())}
-                    await save_to_json("jsonfiles/activechannels.json", TELEGRAM_CHAT_ID, activechannel_data) 
-                    header = ""
-                    reply_params = None
-
-                    # Get reply params if the message is a reply
-                    if replied_messageid:
-                        try:
-                            tg_msgid = self.reply_dict[str(replied_messageid)]
-                            reply_params = ReplyParameters(message_id=tg_msgid)
-                        except:
-                            traceback.print_exc()
-                            pass
-
-                    # Check if user has uploaded any media
-                    if message.attachments:
-                        adata = [TELEGRAM_CHAT_ID, replied_messageid]
-                        response = await sendAttachments(message, self.telegram_bot, adata, reply_params)
-                        if response:
-                            return 
-                        
-                    excaped_author = escapeMD(message.author.display_name)
-                    escaped_channnel = escapeMD(f"#{message.channel.name}")
-                    header = header + f"__*{excaped_author}* \\| _{escaped_channnel}_ __\n"
-
-                    # Check if message has any emoji, mentions for channels, roles or members
-                    msgcontent = getRtext(message)
-                    items = [msgcontent, header, TELEGRAM_CHAT_ID] 
-
-                    # Check if message has any emoji
-                    if isinstance(msgcontent, list):
-                        await sendEmoji(self.telegram_bot, message, items, reply_params)
-                        return 
-
-                    # Check if message has any discord GIF
-                    if "gif" in msgcontent and is_valid_url(msgcontent.strip()):
-                        await sendAnimation(self.session, self.telegram_bot, message, items, reply_params)
-                        return 
-
-                    # Frame the message without any attachments
-                    text = f"{escapeMD(msgcontent)}\n\n`{message.id}` \\| `{message.channel.id}`"
-                    content = header + text
-                    msg = await self.telegram_bot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-                    await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
+            channel = message.channel
+            channel_name = channel.name
+            author = message.author
+            author_name = author.display_name
+            reply = None
+            content = None
+            reply_params = None
+            muted_user = await self.db.getUser(message.guild.id, author.id)
+            if muted_user:
+                return
+            privacy  = await self.db.checkPrivacy(author.id)
+            if privacy:
+                return
+            guild_data = await self.db.getGuild(message.guild)
+            if not guild_data or not guild_data.groupid or channel.id in guild_data.mutedchannelids:
+                return
+                
+            if replied_messageid:
+                try:
+                    rmsg = await message.channel.fetch_message(replied_messageid)
+                    if rmsg.author.id==self.user.id:
+                        if len(rmsg.embeds)>0 and rmsg.embeds[0].description and rmsg.embeds[0].description!="":
+                            if rmsg.embeds[0].title and rmsg.embeds[0].title!="":
+                                reply = f'<blockquote><strong><a href="{rmsg.jump_url}">Reply To: </a></strong>@{rmsg.embeds[0].title}\n'+ f"{rmsg.embeds[0].description[:50]}</blockquote>\n"
+                    else:
+                        if rmsg.content:
+                            reply_content = cleanMessage(rmsg)
+                            reply_author = rmsg.author.display_name
+                            reply = f'<blockquote><strong><a href="{rmsg.jump_url}">Reply To: </a></strong>@{reply_author}\n'
+                            if reply_content and reply_content!="":
+                                reply = reply + f"{reply_content[:50]}</blockquote>\n"
+                            else:
+                                reply = reply + "</blockquote>\n"
+                except:
+                    reply = None
+            if reply:
+                content = reply + f'<u><strong><a href="{message.jump_url}">{author_name}</a></strong></u>|<u>#{channel_name}</u>\n'
+            else:
+                content = f'<u><strong><a href="{message.jump_url}">{author_name}</a></strong></u>|<u>#{channel_name}</u>\n'
+            if message.content and message.content!="":
+                message_content = cleanMessage(message)
+                message_content = markdown_to_html(message_content)
+                content = content + f"{message_content}\n"
+            if message.attachments:
+                for i, attachment in enumerate(message.attachments):
+                    content = content + f'<a href="{attachment.url}">{i+1}. Attachment {i+1}</a>\n'
+            try:
+                await self.telegram_bot.send_message(guild_data.groupid, content, parse_mode="html", reply_parameters = reply_params, link_preview_options=LinkPreviewOptions(is_disabled=True))
+            except ApiTelegramException as e:
+                if e.description=="Bad Request: chat not found":
+                    await self.db.deleteGuild(message.guild.id)
+            except SlowDownError as e:
+                time_to_wait = 1 - (time.time() - (deque(maxlen=4)[0] if len(deque(maxlen=4)) > 0 else time.time()))
+                await asyncio.sleep(max(time_to_wait, 0))
+                await self.telegram_bot.send_message(guild_data.groupid, reply, parse_mode="html", reply_parameters = reply_params)
         except:
             traceback.print_exc()
-
 
 class TelegramBot(AsyncTeleBot):
     def __init__(self, token, discord_bot=None):
         super().__init__(token)
         self.discord_bot = discord_bot
+        self.add_custom_filter(asyncio_filters.IsAdminFilter(self))
 
         @self.message_handler(commands=['start'])
         async def send_welcome(message):
-            await self.reply_to(message, f"Hello\! This is your User ID: `{message.from_user.id}`\nThis is your Chat ID: `{message.chat.id}`", parse_mode="markdownv2")
+            content = (
+                f"Hello {message.from_user.first_name}!\n"
+                "This bot will help you connect you Discord & Telegram group\n"
+                "For Integration setup go to Discord and use /help in the server where Telecord is present.\n\n"
+                "Note: Only Discord server Admins or Mods can start integration setup."
+            )
+            await self.reply_to(message, content)
 
         @self.message_handler(commands=['help'])
         async def send_help(message):
-            await self.reply_to(message, "This is help!")
+            content = (
+                "These are available useful commands!\n\n"
+                "/link <code>: Connect your Telegram group with Discord Server\n"
+                "/unlink: Disconnect your Telegram group from Discord Server\n"
+                "/mute [channel_id]: Stop incoming messages from this channel\n"
+                "/forcemute [channel_id]: Force mute disables unmute command\n"
+                "/unmute [channel_id]: Unmute incoming messages from this channel\n"
+                "/muteuser [user_id]: Stop incoming messages from this user\n"
+                "/unmuteuser [user_id]: Unmute incoming messages from this user\n"
+                "/privacy: Enable/Disable forwading your messages to Discord\n\n"
+                "Note: You can also mute Discord channel or user by replying to the Telecord message.\n"
+                "Note: Mute/Unmute command doesn't work on Telegram Group members.\n"
+                "Note: Commands only work in Telegram Groups."
+            )
+            await self.reply_to(message, content)
 
-        @self.message_handler(commands=['userid'])
-        async def send_chatid(message):
-            await self.reply_to(message, f"User ID: `{message.from_user.id}`", parse_mode="markdownv2")
+        @self.message_handler(commands=['changechannel'])
+        async def change_channel(message):
+            query = "SELECT guildid FROM auth WHERE groupid = ?;"
+            async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                row = await cursor.fetchone()
+            if not row:
+                await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                return
+            guildid = row[0]
+            guild = self.discord_bot.get_guild(guildid)
+            if not guild:
+                guild = await self.discord_bot.fetch_guild(guildid)
+            if not guild:
+                await self.discord_bot.db.deleteGuild(guildid)
+                await self.send_message(message.chat.id, "Discord Server not found!")
+                return
+            channels[guild.id] = []
+            for channel in guild.text_channels:
+                permissions = channel.permissions_for(guild.me)
+                if permissions.view_channel and permissions.send_messages and permissions.read_message_history:
+                    channels[guild.id].append(channel)
+                    
+            if not channels:
+                await self.send_message(message.chat.id, "Insufficient Permissions!\nNo channel found where bot can send message!")
+                return
+            markup = generate_keyboard(channels, guild.id, 0)
+            await self.send_message(message.chat.id, "Choose a channel:", reply_markup=markup)
 
-        @self.message_handler(commands=['chatid'])
-        async def send_chatid(message):
-            await self.reply_to(message, f"Chat ID: `{message.chat.id}`", parse_mode="markdownv2")
+        @self.message_handler(commands=['link'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_link(message):
+            user_message = message.text
+            content = user_message.split()[1:]
+            if content:
+                try:
+                    code = int(content[0].strip())
+                except:
+                    await self.send_message(message.chat.id, "Please provide valid authentication code!")
+                    return
+            else:
+                await self.send_message(message.chat.id, "You didn't provide the authentication code!")
+                return
+            query = "SELECT code, guildid FROM auth;"
+            async with self.discord_bot.db.execute(query) as cursor:
+                rows = await cursor.fetchall()
+            if rows:
+                for row in rows:
+                    if code==row[0]:
+                        code, guildid = row
+                        guild = self.discord_bot.get_guild(guildid)
+                        if not guild:
+                            guild = await self.discord_bot.fetch_guild(guildid)
+                        if not guild:
+                            await self.discord_bot.db.deleteGuild(guildid)
+                            await self.send_message(message.chat.id, "Discord Server not found!")
+                            return
+                        for channel in guild.text_channels:
+                            permissions = channel.permissions_for(guild.me)
+                            if permissions.view_channel and permissions.send_messages and permissions.read_message_history:
+                                await self.discord_bot.db.updateGuild(guildid, tgadmin=message.from_user.id, groupid=message.chat.id, invite= message.chat.invite_link, code_used=True)
+                                await self.discord_bot.db.insertActivech(guildid, message.chat.id, channel.id)
+                                await self.send_message(message.chat.id, f"Successfully connected to {guild.name}!\nTo change current chatting channel use /changechannel command.")
+                                msg = await self.send_message(message.chat.id, f"You are currently chatting in #{channel.name}!")
+                                await self.pin_chat_message(message.chat.id, msg.message_id, disable_notification=True)
+                                embed = discord.Embed(title="Telegram Group successfully connected!", description=f"{guild.name} has successfully connected with `{message.chat.first_name}` Telegram Group.", color=discord.Color.green())
+                                embed.set_footer(text="Admins can disconnect Telegram anytime using /unlink command.")
+                                await channel.send(embed=embed)
+                                return
+            await self.send_message(message.chat.id, "Please provide valid authentication code!")
 
-        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation', 'audio', 'voice', 'video', 'document'])
+        @self.message_handler(commands=['unlink'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_unlink(message):
+            query = "SELECT guildid FROM auth WHERE groupid = ?;"
+            async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                await self.discord_bot.db.deleteGuild(guildid)
+                await self.send_message(message.chat.id, "Unlinked Discord Server successfully!")
+                return
+            await self.send_message(message.chat.id, "Telegram Group is not connected to any Discord Server!")
+
+        @self.message_handler(commands=['mute'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_mute(message):
+            user_message = message.text
+            content = user_message.split()[1:]
+            channelid = None
+            if content:
+                try:
+                    channelid = int(content[0].strip())                     
+                except:
+                    await self.send_message(message.chat.id, "Please provide valid channel id!")
+                    return
+            elif message.reply_to_message and message.reply_to_message.from_user.username.lower()=="telecord_userbot":
+                reply_message = message.reply_to_message
+                reply_url = getreplyurl(replied_message.text)
+                reply_data = None
+                if reply_url:
+                    reply_data = mdata(reply_url)
+                if not reply_url or not reply_data:
+                    await self.send_message(message.chat.id, "This message doesn't contain channel info!")
+                    return
+                channelid = reply_data.channel_id
+            if not channelid:
+                await self.send_message(message.chat.id, "Please provide channel id!")
+                return
+            query = "SELECT guildid FROM auth WHERE groupid = ?;"
+            async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                row = await cursor.fetchone()
+            if not row:
+                await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                return
+            guildid = row[0]
+            guild_data = await self.discord_bot.db.getGuild(guildid)
+            if channelid in guild_data.mutedchannelids:
+                await self.send_message(message.chat.id, "Channel is already muted!")
+                return
+            channel = self.discord_bot.get_channel(channelid)
+            if not channel:
+                channel = await self.discord_bot.fetch_channel(channelid)
+            if not channel or channel.guild!=guildid:
+                await self.send_message(message.chat.id, "Channel not found!")
+                return
+            guild_data.mutedchannelids.append(channelid)
+            await self.discord_bot.db.updateGuild(guildid, mutedchannelids=guild_data.mutedchannelids)
+            await self.send_message(message.chat.id, "Channel muted successfully!")  
+
+        @self.message_handler(commands=['forcemute'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_forcemute(message):
+            query = "SELECT guildid FROM auth WHERE groupid = ?;"
+            async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                row = await cursor.fetchone()
+            if not row:
+                await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                return
+            guildid = row[0]
+            guild_data = await self.discord_bot.db.getGuild(guildid)
+            if guild_data.force_mute:
+                await self.discord_bot.db.updateGuild(guildid, force_mute=False)
+                await self.send_message(message.chat.id, "Force mute setting turned off!")
+            else:
+                await self.discord_bot.db.updateGuild(guildid, force_mute=True)
+                await self.send_message(message.chat.id, "Force mute setting turned on!")
+
+        @self.message_handler(commands=['unmute'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_unmute(message):
+            user_message = message.text
+            content = user_message.split()[1:]
+            channelid = None
+            if content:
+                try:
+                    channelid = int(content[0].strip())                     
+                except:
+                    await self.send_message(message.chat.id, "Please provide valid channel id!")
+                    return
+            elif message.reply_to_message and message.reply_to_message.from_user.username.lower()=="telecord_userbot":
+                reply_message = message.reply_to_message
+                reply_url = getreplyurl(replied_message.text)
+                reply_data = None
+                if reply_url:
+                    reply_data = mdata(reply_url)
+                if not reply_url or not reply_data:
+                    await self.send_message(message.chat.id, "This message doesn't contain channel info!")
+                    return
+                channelid = reply_data.channel_id
+            if not channelid:
+                await self.send_message(message.chat.id, "Please provide channel id!")
+                return
+            query = "SELECT guildid FROM auth WHERE groupid = ?;"
+            async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                row = await cursor.fetchone()
+            if not row:
+                await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                return
+            guildid = row[0]
+            guild_data = await self.discord_bot.db.getGuild(guildid)
+            if guild_data.force_mute:
+                await self.send_message(message.chat.id, "Force Mute setting is on!\n\nTurn off force mute to unmute channels!")
+                return
+            if channelid not in guild_data.mutedchannelids:
+                await self.send_message(message.chat.id, "Channel is already unmuted!")
+                return
+            channel = self.discord_bot.get_channel(channelid)
+            if not channel:
+                channel = await self.discord_bot.fetch_channel(channelid)
+            if not channel or channel.guild!=guildid:
+                await self.send_message(message.chat.id, "Channel not found!")
+                return
+            guild_data.mutedchannelids.remove(channelid)
+            await self.discord_bot.db.updateGuild(guildid, mutedchannelids=guild_data.mutedchannelids)
+            await self.send_message(message.chat.id, "Channel unmuted successfully!")
+        
+        @self.message_handler(commands=['muteuser'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_muteuser(message):
+            user_message = message.text
+            content = user_message.split()[1:]
+            userid = None
+            guild = None
+            if content:
+                try:
+                    userid = int(content[0].strip())                     
+                except:
+                    await self.send_message(message.chat.id, "Please provide valid User id!")
+                    return
+            elif message.reply_to_message and message.reply_to_message.from_user.username.lower()=="telecord_userbot":
+                reply_message = message.reply_to_message
+                reply_url = getreplyurl(replied_message.text)
+                reply_data = None
+                if reply_url:
+                    reply_data = mdata(reply_url)
+                if not reply_url or not reply_data:
+                    await self.send_message(message.chat.id, "This message doesn't contain User info!")
+                    return
+                channel_id = reply_data.channel_id
+                message_id = reply_data.message_id
+                channel = await self.discord_bot.fetch_guild(channel_id)
+                if not channel:
+                    await self.send_message(message.chat.id, "That message doesn't exist anymore!")
+                    return
+                guild = channel.guild
+                replymessage = await channel.fetch_message(message_id)
+                if not replymessage:
+                    await self.send_message(message.chat.id, "That message doesn't exist anymore!")
+                    return
+                userid = replymessage.author.id
+            if not userid:
+                await self.send_message(message.chat.id, "Please provide User id!")
+                return
+            if not guild:
+                query = "SELECT guildid FROM auth WHERE groupid = ?;"
+                async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                    row = await cursor.fetchone()
+                if not row:
+                    await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                    return
+                guildid = row[0]
+                guild = self.discord_bot.get_guild(guildid)
+                if not guild:
+                    guild = await self.discord_bot.fetch_guild(guildid)
+            user = guild.get_member(userid)
+            if not user:
+                user = await guild.fetch_member(userid)
+            if not user:
+                await self.send_message(message.chat.id, "User not found!")
+                returnreturn
+            status = await self.discord_bot.db.getUser(guild.id, user.id)
+            if status:
+                await self.send_message(message.chat.id, "User is already muted!")
+                return
+            await self.discord_bot.db.updateUser(guild.id, user.id, muted=True)
+            await self.send_message(message.chat.id, "User muted successfully!")
+            
+        @self.message_handler(commands=['unmuteuser'], chat_types=['group', 'supergroup'], is_chat_admin=True)
+        async def send_unmuteuser(message):
+            user_message = message.text
+            content = user_message.split()[1:]
+            userid = None
+            guild = None
+            if content:
+                try:
+                    userid = int(content[0].strip())                     
+                except:
+                    await self.send_message(message.chat.id, "Please provide valid User id!")
+                    return
+            elif message.reply_to_message and message.reply_to_message.from_user.username.lower()=="telecord_userbot":
+                reply_message = message.reply_to_message
+                reply_url = getreplyurl(replied_message.text)
+                reply_data = None
+                if reply_url:
+                    reply_data = mdata(reply_url)
+                if not reply_url or not reply_data:
+                    await self.send_message(message.chat.id, "This message doesn't contain User info!")
+                    return
+                channel_id = reply_data.channel_id
+                message_id = reply_data.message_id
+                channel = await self.discord_bot.fetch_guild(channel_id)
+                if not channel:
+                    await self.send_message(message.chat.id, "That message doesn't exist anymore!")
+                    return
+                guild = channel.guild
+                replymessage = await channel.fetch_message(message_id)
+                if not replymessage:
+                    await self.send_message(message.chat.id, "That message doesn't exist anymore!")
+                    return
+                userid = replymessage.author.id
+            if not userid:
+                await self.send_message(message.chat.id, "Please provide User id!")
+                return
+            if not guild:
+                query = "SELECT guildid FROM auth WHERE groupid = ?;"
+                async with self.discord_bot.db.execute(query, (message.chat.id,)) as cursor:
+                    row = await cursor.fetchone()
+                if not row:
+                    await self.send_message(message.chat.id, "Your Telegram Group is not connected to any Discord Server!")
+                    return
+                guildid = row[0]
+                guild = self.discord_bot.get_guild(guildid)
+                if not guild:
+                    guild = await self.discord_bot.fetch_guild(guildid)
+            user = guild.get_member(userid)
+            if not user:
+                user = await guild.fetch_member(userid)
+            if not user:
+                await self.send_message(message.chat.id, "User not found!")
+                return
+            status = await self.discord_bot.db.getUser(guild.id, user.id)
+            if not status:
+                await self.send_message(message.chat.id, "User is already unmuted!")
+                return
+            await self.discord_bot.db.updateUser(guild.id, user.id, muted=False)
+            await self.send_message(message.chat.id, "User unmuted successfully!")
+            
+        @self.message_handler(commands=['privacy'], chat_types=['group', 'supergroup'])
+        async def send_privacy(message):
+            privacy = await self.discord_bot.db.checkPrivacy(message.from_user.id)
+            new_privacy = not privacy
+            p = "on" if new_privacy else "off"
+            w = "won't" if new_privacy else "will"
+            await self.discord_bot.db.updatePrivacy(message.from_user.id, privacy=new_privacy)
+            await self.send_message(message.chat.id, f"Privacy mode turned {p}! Your messages {w} be forwaded to discord.")
+
+        @self.message_handler(func=lambda message: True, content_types=['photo', 'text', 'sticker', 'animation', 'audio', 'voice', 'video', 'document'], chat_types=['group', 'supergroup'])
         async def echo_all(message):
             replied_message = None
             if message.reply_to_message:
                 replied_message = message.reply_to_message
             
-            # Forward the message from Telegram to Discord
             await self.forward_to_discord(message, replied_message)
+            
+        @self.callback_query_handler(func=lambda call: True)
+        async def handle_query(call):
+            data = call.data
+            query, guildid, timestamp = data.split()
+            guildid = int(guildid)
+            timestamp = int(timestamp)
+            if (int(time.time())-timestamp)>60:
+                if guildid in channels:
+                    del channels[guildid]
+                return
+            if guildid not in channels:
+                await self.answer_callback_query(call.id, f"Channel data flushed out! Please try /changechannel command again.")
+                return
+
+            if query.isdigit():
+                channel_id = int(query)
+                selected_channel = next((channel for channel in channels[guildid] if channel.id == channel_id), None)
+                if selected_channel:
+                    await self.discord_bot.db.updateActivech(selected_channel.id, guildid=guildid)
+                    await self.answer_callback_query(call.id, f"You selected: {selected_channel.name}")
+                    msg = await self.send_message(call.message.chat.id, f"You are currently chatting in #{selected_channel.name}!")
+                    await self.pin_chat_message(call.message.chat.id, msg.message_id, disable_notification=True)
+            else:
+                if query.startswith("prev_"):
+                    current_page = int(query.split("_")[1])
+                    new_page = current_page - 1
+                elif query.startswith("next_"):
+                    current_page = int(query.split("_")[1])
+                    new_page = current_page + 1
+                
+                markup = generate_keyboard(channels, guildid, new_page)
+                await self.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup)
     
     async def forward_to_discord(self, message, replied_message):
-        # Create the event for sending the message
+        privacy = await self.discord_bot.db.checkPrivacy(message.from_user.id)
+        if privacy:
+            return
         self.discord_bot.dispatch("tgmessage", message, replied_message)
 
     
 bot = DiscordBot()
-telegram_bot = TelegramBot(token = func.tokens.tgtoken, discord_bot = bot)
+telegram_bot = TelegramBot(token = TGTOKEN, discord_bot = bot)
 bot.telegram_bot = telegram_bot
 
-@bot.hybrid_command(name="unmute", description="Unmute incoming messages from a channel.", with_app_command = True)
+@bot.hybrid_command(name="unmute", description="Starts forwading messages of the channel", with_app_command = True)
+@app_commands.checks.has_permissions(manage_guild=True)
+@commands.has_permissions(manage_guild=True)
 @app_commands.describe(channel="Select channel that you want to unmute")
-async def unmute_command(ctx: commands.Context, channel: Union[CategoryChannel, TextChannel]):
+async def unmute_command(ctx: commands.Context, channel: TextChannel = None):
     try:
-        if ctx.interaction:
-            interaction : discord.Interaction = ctx.interaction
-            userid = interaction.user.id
-            await interaction.response.defer()
-            sendmessage = ctx.interaction.followup
+        channel = channel if channel else ctx.channel
+        guild_data = await bot.db.getGuild(ctx.guild)
+        if not guild_data or not guild_data.groupid:
+            guild_data = await bot.db.insertGuild(ctx.guild.id)
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
         else:
-            userid = ctx.author.id
-            sendmessage = ctx
-        result_telecord = await func.get_db(func.telecorddata, {"useriddc": userid})
-        if not result_telecord:
-            await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
-            return
-        filter_telecord = {"useriddc": userid}
-        update_telecord = { "$pull": { "mutedchannels": channel.id } }
-        updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
-        if updated:
-            await sendmessage.send(f"<a:chk:1241031331756904498> {channel.mention} unmuted successfully!")
-        else:
-            await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
+            if guild_data.force_mute:
+                embed = discord.Embed(title="Force Mute Activated!", description="<a:pending:1241031324119072789> Can't Unmute! Channel has been force muted by Telegram Admin.", color=discord.Color.orange())
+            else:
+                mutedchannelids = guild_data.mutedchannelids
+                if channel.id not in mutedchannelids:
+                    embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Unmuted!", color=discord.Color.green())
+                else:
+                    mutedchannelids.remove(channel.id)
+                    await bot.db.updateGuild(ctx.guild.id, mutedchannelids=mutedchannelids)
+                    embed = discord.Embed(title="Channel Unmuted Successfully! <a:chk:1241031331756904498>", description = "Messages will now be forwarded to the connected Telegram Group", color=discord.Color.green())
+        await ctx.send(embed=embed)
     except:
         traceback.print_exc()
 
-@bot.hybrid_command(name="mute", description="Mute incoming messages from a channel.", with_app_command = True)
+@bot.hybrid_command(name="mute", description="Stop forwading messages of the channel", with_app_command = True)
+@app_commands.checks.has_permissions(manage_guild=True)
+@commands.has_permissions(manage_guild=True)
 @app_commands.describe(channel="Select channel that you want to mute")
-async def mute_command(ctx: commands.Context, channel: Union[CategoryChannel, TextChannel]):
+async def mute_command(ctx: commands.Context, channel: TextChannel = None):
     try:
-        if ctx.interaction:
-            interaction : discord.Interaction = ctx.interaction
-            userid = interaction.user.id
-            await interaction.response.defer()
-            sendmessage = ctx.interaction.followup
+        channel = channel if channel else ctx.channel
+        guild_data = await bot.db.getGuild(ctx.guild)
+        if not guild_data or not guild_data.groupid:
+            guild_data = await bot.db.insertGuild(ctx.guild.id)
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
         else:
-            userid = ctx.author.id
-            sendmessage = ctx
-        result_telecord = await func.get_db(func.telecorddata, {"useriddc": userid})
-        if not result_telecord:
-            await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
-            return
-        filter_telecord = {"useriddc": userid}
-        update_telecord = { "$addToSet": { "mutedchannels": channel.id } }
-        updated = await func.update_db(func.telecorddata, filter_telecord, update_telecord)
-        if updated:
-            await sendmessage.send(f"<a:chk:1241031331756904498> {channel.mention} muted successfully!")
-        else:
-            await sendmessage.send("<a:pending:1241031324119072789> Oops something went wrong! Contact support if the error persists.")
+            mutedchannelids = guild_data.mutedchannelids
+            if channel.id in mutedchannelids:
+                embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Muted!", color=discord.Color.green())
+            else:
+                mutedchannelids.append(channel.id)
+                await bot.db.updateGuild(ctx.guild.id, mutedchannelids=mutedchannelids)
+                embed = discord.Embed(title="Channel Muted Successfully! <a:chk:1241031331756904498>", description = "Messages won't be forwarded to the connected Telegram Group.", color=discord.Color.green())
+        await ctx.send(embed=embed)
     except:
         traceback.print_exc()
-        
-        
+          
 @bot.hybrid_command(name="help", description="Show guide to how to get started.", with_app_command = True)
 async def send_bot_help(ctx: commands.Context):
-    embed = discord.Embed(title="Telecord Help Menu!", color=func.settings.embed_color)
-    embed.description = f"A Bot designed to facilitate communication between Discord and Telegram. It allows users to send messages from Telegram to Discord and vice versa. \n\n**How to get started!**\nUse /start command and choose your primary discord channel. Get your telegram User ID and Chat ID from [here](https://telegram.me/discordmessenger_bot)\n\n\n**Note**: After 10min of inactivity your discord channel shift to the primary channel that your chose during the start. However, you can still send reply to the discord user by selecting the reply message.\nTo stop recieving message from a specific channel use /mute command.\n\n**Tip**: \n- `Use /start command instead of {func.settings.bot_prefix}start to hide your telegram User ID and Chat ID`\n- `Use {func.settings.bot_prefix}prefix commands to avoid timeout issues.`"
-    embed.add_field(name="/help", value="Guide to how to get started", inline=False)
+    embed = discord.Embed(title="Telecord Help Menu!", color=discord.Color.blue())
+    embed.description = f"A Bot designed to facilitate communication between Discord and Telegram. It forwards messages from Telegram to Discord and vice versa."
+    embed.add_field(name="/help", value="Shows Telecord help menu", inline=False)
+    embed.add_field(name="/info", value="Show info about connected Telegram Group", inline=False)
+    embed.add_field(name="/link", value="Setup discord-telegram connection", inline=False)
+    embed.add_field(name="/unlink", value="Revoke discord-telegram connection", inline=False)
+    embed.add_field(name="/mute <channel>", value="Stop forwading messages of the channel", inline=False)
+    embed.add_field(name="/unmute <channel>", value="Starts forwading messages of the channel", inline=False)
     embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
-    embed.add_field(name="/start", value="Setup discord-telegram connection", inline=False)
-    embed.add_field(name="/end", value="Ends a discord-telegram connection", inline=False)
-    embed.add_field(name="/mute", value="Mute incoming messages from a channel", inline=False)
-    embed.add_field(name="/unmute", value="Unmute incoming messages from a channel", inline=False)
+    embed.add_field(name="/privacy <on/off>", value="Stop forwading your message to telegram", inline=False)
     await ctx.send(embed=embed)
-        
-    
-@bot.hybrid_command(name="start", description="Setup your discord-telegram chat.", with_app_command = True)
-@app_commands.describe(
-    channel="Discord channel in which you want to chat",
-    telegram_chat_id="Enter your Telegram chat ID received by /start in telegram",
-    telegram_user_id="Enter your Telegram user ID received by /start in telegram"
-)
-async def start_command(ctx: commands.Context, channel: TextChannel, telegram_chat_id: int, telegram_user_id: int):
-    try:
-        if ctx.interaction:
-            interaction : discord.Interaction = ctx.interaction
-            await interaction.response.defer(ephemeral=True)
-            sendmessage = ctx.interaction.followup
-        else:
-            sendmessage = ctx
-        response = await is_valid_user(telegram_bot, telegram_chat_id, telegram_user_id)
-        if response:
-            query = {
-                "$or": [
-                    {"useridtg": telegram_user_id},
-                    {"useriddc": ctx.author.id},
-                    {"chatid": telegram_chat_id}
-                ]
-            }
-            response = await func.get_any(func.telecorddata, query)
-            if response:
-                if ctx.interaction:
-                	await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!", ephemeral=True)
-                	return
-                await sendmessage.send("<a:pending:1241031324119072789> You are already a registered user!")
-                return
-            otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            authdict[telegram_user_id] = {'id': ctx.author.id, 'code': otp, 'since': int(time.time())}
-            await telegram_bot.send_message(telegram_chat_id, f"This is your Telecord authentication code:\n `{otp}`", parse_mode="markdownv2")
-            if ctx.interaction:
-            	await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min", ephemeral=True)
-            else:
-                await sendmessage.send("<a:pending:1241031324119072789> Type the code sent by the bot in telegram to verify yourself in 2min")
 
-            def check(m):
-                return m.author == ctx.author and m.channel == ctx.channel and re.match(r'^\d{6}$', m.content.strip())
+@bot.hybrid_command(name="info", description="Show info about connected Telegram Group", with_app_command = True)
+async def info_command(ctx: commands.Context):
+    try:
+        guild_data = await bot.db.getGuild(ctx.guild)
+        if not guild_data or not guild_data.groupid:
+            guild_data = await bot.db.insertGuild(ctx.guild.id)
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
+        else:
+            chat = await bot.telegram_bot.get_chat(guild_data.groupid)
+            embed = discord.Embed(title="Telegram Group Info!", description="", color=discord.Color.blue())
+            embed.add_field(name="Group name", value=chat.title, inline=False)
+            embed.add_field(name="Type", value=chat.type, inline=False)
+            description = chat.description if chat.description else "None"
+            embed.add_field(name="Description", value=description, inline=False)
+            embed.add_field(name="Invite Link", value=chat.invite_link, inline=False)
+        await ctx.send(embed=embed)
+    except:
+        traceback.print_exc()
+        
+@bot.hybrid_command(name="link", description="Starts Discord-Telegram Integration Process", with_app_command = True)
+@app_commands.checks.has_permissions(manage_guild=True)
+@commands.has_permissions(manage_guild=True)
+async def link_command(ctx: commands.Context):
+    try:
+        guild_data = await bot.db.getGuild(ctx.guild)
+        if not guild_data:
+            guild_data = await bot.db.insertGuild(ctx.guild.id)
+        if guild_data.groupid:
+            embed = discord.Embed(title="Telegram Group already connected!", description="There's already a Telegram Group attached to your Server! Unlink it first to add another.", color=discord.Color.orange())
             
-            try:
-                # Wait for a message from the same user in the same channel for 120 seconds
-                reply = await bot.wait_for('message', timeout=120, check=check)
-            except asyncio.TimeoutError:
-                await sendmessage.send("You didn't reply within 2 minutes.")
-                return
-            authcode = int(reply.content.strip())
-            if int(otp) == authcode:
-                insert_telecord = {"useriddc": ctx.author.id, "useridtg": telegram_user_id, "channelid": channel.id, "chatid": telegram_chat_id, "mutedchannels":[]}
-                response = await func.insert_db(func.telecorddata, insert_telecord)
-                if response:
-                    await sendmessage.send("<a:chk:1241031331756904498> Your setup completed successfully!")
-                    return
-                await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Try again or contact support.")
-                return
-            await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid code.")
-            return
-        await sendmessage.send("<a:crs:1241031335250755746> Setup failed! Invalid chatID or userID.")
+        else:
+            code = int(int(time.time())+ctx.guild.id)
+            await bot.db.updateGuild(ctx.guild.id, code=code)
+            embed = discord.Embed(title="Telegram Group integration Setup", description = "Follow these steps to link your Discord server with a Telegram group:", color=discord.Color.blue())
+            embed.add_field(
+                name="1. Create a Telegram Group",
+                value="Go to Telegram and create a new **Group** where you'll add the bot.",
+                inline=False
+            )
+    
+            embed.add_field(
+                name="2. Add Telecord Bot",
+                value="Add the **Telecord** bot to your Telegram group and make sure it has **Admin** permissions to function properly.",
+                inline=False
+            )
+    
+            embed.add_field(
+                name="3. Link the Group with Discord",
+                value=f"Use the following command in your Telegram group to connect the group with server: `/link {code}`",
+                inline=False
+            )
+            embed.set_footer(text="Tip: Don't share the code as it can only be used once.")
+        await ctx.send(embed=embed)
     except:
         traceback.print_exc()
 
-@bot.hybrid_command(name="end", description="Disconnect your discord-telegram chat.", with_app_command = True)
-async def end_command(ctx: commands.Context):
+@bot.hybrid_command(name="unlink", description="Revoke Discord-Telegram connection.", with_app_command = True)
+@app_commands.checks.has_permissions(manage_guild=True)
+@commands.has_permissions(manage_guild=True)
+async def unlink_command(ctx: commands.Context):
     try:
-        if ctx.interaction:
-            interaction : discord.Interaction = ctx.interaction
-            await interaction.response.defer()
-            sendmessage = ctx.interaction.followup
+        guild_data = await bot.db.getGuild(ctx.guild)
+        if guild_data:
+            guild_data = await bot.db.deleteGuild(ctx.guild.id)
+            embed = discord.Embed(title="Unlinked Successfully!", description="Your server has been unlinked from telegram group successfully.", color=discord.Color.green())
         else:
-            sendmessage = ctx
-        response = await func.delete_db(func.telecorddata, {"useriddc": ctx.author.id})
-        if response:
-            await sendmessage.send("<a:chk:1241031331756904498> You are disconnected from Telecord successfully!")
-            return
-        await sendmessage.send("<a:pending:1241031324119072789> You are not a registered user! Use /start to get started.")
+            embed = discord.Embed(title="No Links Found!", description = "Your server isn't connected to any telegram group", color=discord.Color.orange())
+        await ctx.send(embed=embed)
     except:
         traceback.print_exc()
 
@@ -397,7 +723,20 @@ async def ping_command(ctx:commands.Context):
         await ctx.send(embed=embed)
     except:
         traceback.print_exc()
-            
+
+@bot.hybrid_command(name="privacy", description="Stop forwading your messages to Telegram", with_app_command = True)
+async def privacy_command(ctx: commands.Context):
+    try:
+        privacy = await bot.db.checkPrivacy(ctx.author.id)
+        new_privacy = not privacy
+        p = "on" if new_privacy else "off"
+        w = "won't" if new_privacy else "will"
+        await bot.db.updatePrivacy(ctx.author.id, privacy=new_privacy)
+        embed = discord.Embed(title=f"Privacy mode turned {p}!", description=f"<a:chk:1241031331756904498> Your messages {w} be forwaded to Telegram.", color=discord.Color.green())
+        await ctx.send(embed=embed)
+    except:
+        traceback.print_exc()
+        
 class Telecord:
     def __init__(self):
         self.discord_bot = bot
@@ -405,7 +744,7 @@ class Telecord:
 
     async def dcstart(self):
         try:
-        	await self.discord_bot.start(func.tokens.dctoken)
+        	await self.discord_bot.start(DCTOKEN)
         except:
             traceback.print_exc()
 

@@ -1,326 +1,215 @@
-import os, aiofiles, re, aiohttp, string
-import discord,random, json, traceback
-from telebot.util import escape
-from telebot import types
-from typing import Union
-from moviepy.editor import VideoFileClip
-import function as func 
-BOT_TOKEN = func.tokens.dctoken
+import re
+import traceback, time
+from collections import deque
+from functools import wraps
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from markdown import markdown
 
+nonusable_md = ['.', '-','=','#','>']
+firstpos_md = ['>']
 
-def generate_random_filename(length=20, extension=None):
-    """Generate a random filename with the specified length and extension."""
-    # Define characters to choose from (only alphabetic characters)
-    characters = string.ascii_letters
+class SlowDownError(Exception):
+    pass
 
-    # Generate random filename
-    random_filename = ''.join(random.choice(characters) for _ in range(length))
+def limit_calls_per_second(max_calls=4):
+    def decorator(func):
+        call_times = deque(maxlen=max_calls)  
 
-    # Add extension if provided
-    if extension:
-        random_filename += f'.{extension}'
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            current_time = time.time()
+            if len(call_times) == max_calls and current_time - call_times[0] < 1:
+                raise SlowDownError("Rate limit exceeded!")
+            
+            call_times.append(current_time)
+            return func(*args, **kwargs)
 
-    return random_filename
+        return wrapper
+    return decorator
 
-async def sendAttachments(message, tgbot, TELEGRAM_CHAT_ID, reply_params=None):
-    media_group = []  # List to store media attachments
-    try:
-        for attachment in message.attachments:
-            # Determine the type of attachment based on its URL extension
-            if ".pdf" in attachment.url:
-                media_group.append(types.InputMediaDocument(attachment.url))
-            elif ".mp3" in attachment.url or ".m4a" in attachment.url:
-                media_group.append(types.InputMediaAudio(attachment.url))
-            elif ".mp4" in attachment.url:
-                media_group.append(types.InputMediaVideo(attachment.url))
-            elif ".jpeg" in attachment.url or ".jpg" in attachment.url:
-                media_group.append(types.InputMediaPhoto(attachment.url))
-            elif ".png" in attachment.url:
-                media_group.append(types.InputMediaPhoto(attachment.url))
-            elif ".gif" in attachment.url:
-                media_group.append(types.InputMediaAnimation(attachment.url))
-            else:
-                # Default to InputMediaDocument if the attachment type is unknown
-                media_group.append(types.InputMediaDocument(attachment.url))
+class DiscordMessage:
+    def __init__(self, guild_id, channel_id, message_id):
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.message_id = message_id
+
+def generate_keyboard(channels, guildid, page):
+    markup = InlineKeyboardMarkup()
+    start_index = page * 4
+    end_index = start_index + 4
+    prev_button = None
+    next_button = None
+
+    for channel in channels[guildid][start_index:end_index]:
+        button = InlineKeyboardButton(f"#{channel.name}", callback_data=f"{channel.id} {guildid} {int(time.time())}")
+        markup.add(button)
         
-        # Construct the message header with author and channel information
-        content = f"{escapeMD(message.author.name)} \\| \\#{escapeMD(message.channel.name)}\n\n`{message.id}` \\| `{message.channel.id}`"
-        # Send the header as a Markdown-formatted message
-        await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode='markdownv2')
-        # Send the media group to the specified Telegram chat
-        msg = await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group, reply_parameters=reply_params)
-        # Save the message ID mapping to a JSON file
-        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-        return msg  # Return the sent message object
-
-    except:
-        traceback.print_exc()
-        return None  # Return None if an exception occurs
-
-async def sendEmoji(tgbot, message, items, reply_params=None):
-    try:
-        msgcontent, header, TELEGRAM_CHAT_ID = items
-        # Check if message has single emoji
-        if len(msgcontent) == 1:
-            caption = header + f"\n`{message.id}` \\| `{message.channel.id}`"
-            # Determine if the emoji is a PNG or GIF and send the emoji accordingly
-            if ".png" in msgcontent[0]:
-                msg = await tgbot.send_photo(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-            elif ".gif" in msgcontent[0]:
-                msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent[0], caption=caption, parse_mode = "markdownv2", reply_parameters = reply_params)
-            # Save the message ID mapping to a JSON file
-            await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-            return msg
-
-        # Send multiple emojis as an album
-        media_group = []
-        for url in msgcontent:
-            if ".png" in url:
-                media_group.append(types.InputMediaPhoto(url))
-            elif ".gif" in url:
-                media_group.append(types.InputMediaAnimation(url))
-        content = header + f"\n`{message.id}` \\| `{message.channel.id}`"
-        msg = await tgbot.send_message(TELEGRAM_CHAT_ID, content, parse_mode="markdownv2", reply_parameters = reply_params)
-        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-        await tgbot.send_media_group(TELEGRAM_CHAT_ID, media_group)
-        return msg
-    except:
-        tracback.print_exc
-        return None
-
-async def sendAnimation(session, tgbot, message, items, reply_params = None):
-    try:
-        msgcontent, header, TELEGRAM_CHAT_ID = items
-        # If the animation is from Tenor, get the direct URL
-        if "tenor" in msgcontent:
-            msgcontent = await get_direct_gif_url(session, msgcontent.strip())
-        caption = header + f"\n`{message.id}` \\| `{message.channel.id}`"
-        
-        # Send the animation with the provided caption
-        msg = await tgbot.send_animation(TELEGRAM_CHAT_ID, msgcontent, caption=caption, parse_mode="markdownv2", reply_parameters = reply_params)
-        await save_to_json("jsonfiles/replydict.json", message.id, msg.message_id)
-        return msg
-    except:
-        traceback.print_exc()
-        return None
-
-async def saveFile(filepath, content):
-    try:
-        async with aiofiles.open(filepath, mode='wb') as file:
-            await file.write(content)
-        return True
-    except:
-        traceback.print_exc()
-        return False
-
-async def getSavepath(session, file_id, tgbot, animation: bool = False):
-    # Get the file information using the file ID
-    file_info = await tgbot.get_file(file_id)
-    filepath = file_info.file_path
-    file_extension = filepath.split('.')[-1]
-    downloaded_file = await tgbot.download_file(filepath)
-    filename = generate_random_filename(extension=file_extension)
-    save_path = os.path.join("telegramdownloads", filename)
-    await saveFile(save_path, downloaded_file)
+    nav_buttons = []
+    if page > 0:
+        prev_button = InlineKeyboardButton("Prev", callback_data=f"prev_{page} {guildid} {int(time.time())}")
     
-
-    if save_path:
-        if animation:
-            # Convert video to GIF
-            gifname = generate_random_filename(extension="gif")
-            gifpath = os.path.join("telegramdownloads", gifname)
-            videoClip = VideoFileClip(save_path)
-            videoClip.write_gif(gifpath)
-            return save_path, gifpath
-        return save_path
-    return None
-
-async def getTGMedia(session, tgbot, message, animation: bool = False):
-    try:
-        # Ensure the directory exists or create it
-        if not os.path.exists("telegramdownloads"):
-            os.makedirs("telegramdownloads")
-
-        if message.animation:
-            if message.animation.file_size > 1048576:
-                filepath = await getSavepath(session, message.animation.file_id, tgbot)
-            else:
-                videopath, filepath = await getSavepath(session, message.animation.file_id, tgbot, True)
-                await delete_file(videopath)
-            return filepath
-
-        elif message.audio:
-            filepath = await getSavepath(session, message.audio.file_id, tgbot)
-            filename = message.audio.file_name
-            new_file_path = os.path.join("telegramdownloads", filename)
-            os.rename(filepath, new_file_path)
-            return new_file_path
-
-        elif message.video:
-            filepath = await getSavepath(session, message.video.file_id, tgbot)
-            return filepath
-
-        elif message.voice:
-            filepath = await getSavepath(session, message.voice.file_id, tgbot)
-            filename = message.voice.file_name
-            new_file_path = os.path.join("telegramdownloads", filename)
-            os.rename(filepath, new_file_path)
-            return new_file_path
-        
-        elif message.photo:
-            filepaths = []
-            for photo in message.photo:
-                filepath = await getSavepath(session, photo.file_id, tgbot)
-                filepaths.append(filepath)
-            return filepaths
-
-        elif message.document:
-            filepath = await getSavepath(session, message.document.file_id, tgbot)
-            return filepath
-        
-        else:
-            return None
-
-
-    except Exception as e:
-        traceback.print_exc()
-        return None, None
+    if end_index < len(channels[guildid]):
+        next_button = InlineKeyboardButton("Next", callback_data=f"next_{page} {guildid} {int(time.time())}")
     
-def escapeMD(text):
-    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    escaped_text = ""
+    if prev_button and next_button:
+        markup.add(prev_button, next_button)
+    elif prev_button:
+        markup.add(prev_button)
+    elif next_button:
+        markup.add(next_button)
+    return markup
 
-    for char in text:
-        if char in escape_chars:
-            escaped_text += "\\" + char
-        else:
-            escaped_text += char
-
-    return escaped_text
-
-
-def remake_url(original_url):
-    pattern = r"https://media\d.tenor.com/(.*)/.*\.gif"
-    match = re.search(pattern, original_url)
+def mdata(url):
+    pattern = r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)"
+    match = re.match(pattern, url)
     if match:
-        new_url = "https://c.tenor.com/" + match.group(1) + "/tenor.gif"
-        gifurl = new_url.replace("/m/", "/")
-        return gifurl
+        guild_id, channel_id, message_id = match.groups()
+        return DiscordMessage(guild_id, channel_id, message_id)
     return None
 
+def remove_reply_quote(text):
+    pattern = r'^<b><a href="[^"]+"><blockquote>[^<]+<\/blockquote><\/a><\/b>'
+    cleaned_text = re.sub(pattern, '', text)
+    return cleaned_text.strip()
 
-def getRtext(message):
-    try:
-        emoji_pattern = r"<:(\w+):(\d+)>"
-        animated_emoji_pattern = r"<a:(\w+):(\d+)>"
-        user_pattern = r"<@!?(\d+)>"
-        role_pattern = r"<@&(\d+)>"
-        channel_pattern = r"<#(\d+)>"
-        emoji_replacement = "https://cdn.discordapp.com/emojis/{0}.png"
-        animated_emoji_replacement = "https://cdn.discordapp.com/emojis/{0}.gif"
-        user_replacement = "@{0}"
-        role_replacement = "@{0}"
-        channel_replacement = "#{0}"
-        emojis = re.findall(r"<a?:\w+:\d+>", message.content)
-        non_emoji_text = re.sub(r"<a?:\w+:\d+>", "", message.content)
-        only_emoji = len(non_emoji_text.strip()) == 0
-        if only_emoji:
-            replaced_message = re.sub(emoji_pattern, lambda match: emoji_replacement.format(match.group(2)) + ",", message.content)
-            replaced_message = re.sub(animated_emoji_pattern, lambda match: animated_emoji_replacement.format(match.group(2)) + ",", replaced_message)
-            replaced_message = replaced_message[:-1]
-            r = [url.strip() for url in replaced_message.split(",") if url.strip() != ""]
-            return r
+def getreplyurl(text):
+    pattern = r'href="([^"]+)"'
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    return None
+
+def html_to_markdown(html_text):
+    escape_chars = r'\*_\~\|\`\\'
+    html_text = re.sub(f'([{escape_chars}])', r'\\\1', html_text)
+    html_text = re.sub(r'<b>(.*?)<\/b>', r'**\1**', html_text)
+    html_text = re.sub(r'<strong>(.*?)<\/strong>', r'**\1**', html_text)
+    html_text = re.sub(r'<i>(.*?)<\/i>', r'*\1*', html_text)
+    html_text = re.sub(r'<em>(.*?)<\/em>', r'*\1*', html_text)
+    html_text = re.sub(r'<u>(.*?)<\/u>', r'__\1__', html_text)
+    html_text = re.sub(r'<s>(.*?)<\/s>', r'~~\1~~', html_text)
+    html_text = re.sub(r'<strike>(.*?)<\/strike>', r'~~\1~~', html_text)
+    html_text = re.sub(r'<span class="tg-spoiler">(.*?)<\/span>', r'||\1||', html_text)
+    html_text = re.sub(r'<a href="(.*?)">(.*?)<\/a>', r'[\2](\1)', html_text)
+    html_text = re.sub(r'<code>(.*?)<\/code>', r'`\1`', html_text)
+    html_text = re.sub(r'<pre>(.*?)<\/pre>', r'```\1```', html_text, flags=re.DOTALL)
+    def blockquote_replacement(match):
+        blockquote_content = match.group(1).strip()
+        return '\n'.join([f'> {line.strip()}' for line in blockquote_content.splitlines() if line.strip()]) + '\n\n'
+
+    html_text = re.sub(r'<blockquote.*?>(.*?)<\/blockquote>', blockquote_replacement, html_text, flags=re.DOTALL)
+    html_text = re.sub(r'<.*?>', '', html_text)
+
+    return html_text
+
+def replace_blockquote(html):
+    pattern = r'<blockquote>(.*?)</blockquote>'
+    
+    def replacer(match):
+        content = match.group(1)
+        line_count = len(content.splitlines())        
+        if line_count > 5:
+            return f'<blockquote expandable>{content}</blockquote>'
         else:
-            replaced_message = re.sub(user_pattern, lambda match: user_replacement.format(message.guild.get_member(int(match.group(1))).name), non_emoji_text)
-            replaced_message = re.sub(role_pattern, lambda match: role_replacement.format(message.guild.get_role(int(match.group(1))).name), replaced_message)
-            replaced_message = re.sub(channel_pattern, lambda match: channel_replacement.format(message.guild.get_channel(int(match.group(1))).name), replaced_message)
-    except:
+            return f'<blockquote>{content}</blockquote>'
+    return re.sub(pattern, replacer, html, flags=re.DOTALL)
+
+def process_spoilers(text):
+    parts = re.split(r'(<[^>]+>)', text)
+    for i, part in enumerate(parts):
+        if not part.startswith('<'):
+            parts[i] = re.sub(r'\|\|(.*?)\|\|', r'<span class="tg-spoiler">\1</span>', part, flags=re.DOTALL)
+    return ''.join(parts)
+
+def remove_unsupported_tags(html_text):
+    supported_tags = ['strong', 'i', 'u', 's', 'span', 'a', 'code', 'pre', 'blockquote', 'blockquote expandable']
+    pattern = re.compile(r'<(\/?)(\w+).*?>')
+    def tag_replacer(match):
+        tag = match.group(2)
+        if tag not in supported_tags:
+            return ""
+        return match.group(0)
+    html_text = re.sub(pattern, tag_replacer, html_text)
+    return html_text
+
+def format_code_blocks(text):
+    text = re.sub(r'```(\w+)\n([\s\S]+?)```', r'<pre><code language="\1">\2</code></pre>', text)
+    text = re.sub(r'```(.*?)```', r'<pre>\1</pre>', text, flags=re.DOTALL)
+    return text
+
+def markdown_to_html(text: str):
+    lines = text.splitlines()
+    new_lines = ["<!--newline-->" if line == "" else line for line in lines]
+    markdown_text = "\n".join(new_lines)
+    markdown_text = re.sub(r'(\n>[^>]*\n)(\n>[^>]*\n)', r'\1<!-- -->\2', markdown_text)
+    markdown_text = re.sub(r'__(.*?)__', r'<u>\1</u>', markdown_text)
+    markdown_text = re.sub(r'~~(.*?)~~', r'<s>\1</s>', markdown_text, flags=re.DOTALL)
+    markdown_text = format_code_blocks(markdown_text)
+    html_text = markdown(markdown_text)
+    html_text = process_spoilers(html_text)
+    html_text = re.sub(r'(<\/blockquote>)\s*<!--newline-->\s*(<blockquote>)', r'\1\2', html_text)
+    html_text = re.sub(r'(<blockquote>)\s*\n+', r'\1', html_text)
+    html_text = replace_blockquote(html_text)
+    html_text = html_text.replace("<em>","<i>")
+    html_text = html_text.replace("</em>","</i>")
+    html_text = remove_unsupported_tags(html_text)
+    lines = html_text.splitlines()
+    new_lines = [line for line in lines if line != ""]
+    html_text = "\n".join(new_lines)
+    html_text = html_text.replace("<!--newline-->","")
+    return html_text
+
+def cleanMessage(message):
+    try:
+        emoji_pattern = r"<a?:\w+:\d+>"  
+        user_pattern = r"<@!?(\d+)>"  
+        role_pattern = r"<@&(\d+)>"  
+        channel_pattern = r"<#(\d+)>" 
+
+        message_text = re.sub(emoji_pattern, "", message.content)
+
+        def replace_user(match):
+            user_id = int(match.group(1))
+            user = message.guild.get_member(user_id)
+            return f"@{user.display_name}" if user else "@UnknownUser"
+
+        def replace_role(match):
+            role_id = int(match.group(1))
+            role = message.guild.get_role(role_id)
+            return f"@{role.name}" if role else "@UnknownRole"
+
+        def replace_channel(match):
+            channel_id = int(match.group(1))
+            channel = message.guild.get_channel(channel_id)
+            return f"#{channel.name}" if channel else "#UnknownChannel"
+
+        message_text = re.sub(user_pattern, replace_user, message_text)
+        message_text = re.sub(role_pattern, replace_role, message_text)
+        message_text = re.sub(channel_pattern, replace_channel, message_text)
+
+        return message_text.strip()
+
+    except Exception as e:
         traceback.print_exc()
         return None
-    return replaced_message
 
-
-async def delete_file(file_path):
-    try:
-        async with aiofiles.open(file_path, "rb") as f:
-            os.remove(file_path)
-    except FileNotFoundError:
-        print(f"File '{file_path}' not found.")
-    except Exception as e:
-        print(f"Error deleting file '{file_path}': {e}")
-
-
-async def get_direct_gif_url(session, tenor_url):
-    async with session.get(tenor_url) as response:
-        if response.status == 200:
-            content = await response.text()
-            start_index = content.find("https://media1.tenor.com/")
-            end_index = content.find(".gif", start_index) + 4
-            gif_url = content[start_index:end_index]
-            gifurl = remake_url(gif_url)
-            return gifurl
-        else:
-            return None
-
-
-def is_valid_url(text):
-    regex = re.compile(
-        r"^(?:http|ftp)s?://"  # http:// or https://
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-        r"localhost|"  # localhost...
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-        r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)$",
-        re.IGNORECASE,
-    )
-    return re.match(regex, text) is not None
-
-async def is_valid_private_chat(tgbot, chat_id):
-    try:
-        # Get chat information
-        chat = await tgbot.get_chat(chat_id)
-        
-        # Check if the chat type is 'private'
-        if chat.type == 'private':
-            return True
-        else:
-            return False
-    except telebot.apihelper.ApiException as e:
-        # If an error occurs (e.g., chat not found), print the error and return False
-        print(f"Error: {e}")
-        return False
-
-async def is_valid_user(tgbot, chat_id, user_id):
-    try:
-        chat_member = await tgbot.get_chat_member(chat_id, user_id)
-        
-        if chat_member.status =='member':
-            return True  # The chat_id belongs to your bot and the chat belongs to the specified user_id
-        else:
-            return False  # The chat_id does not belong to your bot or the chat does not belong to the specified user_id
-    except Exception as e:
-        print("Error:", e)
-        return False
-
-async def send_reply(session, channel_id, message, author, reply_messageid=None):
+async def send_message(session, BOT_TOKEN, channel_id, embed, content=None, reply=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {
         "Authorization": f"Bot {BOT_TOKEN}",
         "Content-Type": "application/json"
     }
+    embed_data = embed.to_dict() if hasattr(embed, 'to_dict') else {}
     data = {
-        "content": "",
-        "embeds": [{
-            "description": message.text,
-            "color": func.settings.embed_color,
-            "author": {
-                "name": author
-            }
-        }]
+        "embeds": [embed_data]
     }
-    if reply_messageid:
+    
+    if content and content != "":
+        data["content"] = content
+        
+    if reply and reply.message_id:
         data["message_reference"] = {
-            "message_id": reply_messageid
+            "message_id": reply.message_id
         }
         data["allowed_mentions"] = {
             "replied_user": False
@@ -328,89 +217,7 @@ async def send_reply(session, channel_id, message, author, reply_messageid=None)
 
     async with session.post(url, headers=headers, json=data) as response:
         if response.status == 200:
-            response_json = await response.json()
-            m_id = response_json.get('id')
-            return m_id
-        else:
-            print(f"Failed to send message: {response.status}")
-            return None
-
-async def send_media(session, channel_id, author, file_path: Union[list, str], reply_messageid=None):
-    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
-    headers = {
-        "Authorization": f"Bot {BOT_TOKEN}"
-    }
-
-    data = aiohttp.FormData()
-    image_extensions = ['.png', '.jpg', '.jpeg', '.gif']
-
-    # Create the payload JSON as a separate field
-    payload_json = {"content": ""}
-    if reply_messageid:
-        payload_json["message_reference"] = {
-            "message_id": reply_messageid
-        }
-    
-    files = []
-
-    if isinstance(file_path, str):
-        file = open(file_path, 'rb')
-        files.append(file)
-        file_name = os.path.basename(file_path)
-        file_extension = "."+file_name.rsplit(".",1)[1]
-        if file_extension in image_extensions:
-            payload_json["content"] = f"by {author}"
-        data.add_field('files[0]', file, filename=file_name)
-
-    elif isinstance(file_path, list):
-        payload_json["content"] = f"by {author}"
-        index = 0
-        for i in range(2, len(file_path), 3):
-            file = open(file_path[i], 'rb')
-            file_name = os.path.basename(file_path[i])
-            files.append(file)
-            data.add_field(f'files{index}', file, filename=file_name)
-            index+=1
-            
-    data.add_field('payload_json', json.dumps(payload_json))
-
-    async with session.post(url, data=data, headers=headers) as response:
-        for file in files:
-            file.close()
-        if response.status == 200:
-            response_json = await response.json()
-            m_id = response_json.get('id')
-            return m_id
-        else:
-            print(f"Failed to send message: {response.status}")
-            return None
-
-async def save_to_json(file_path, key, value):
-    try:
-        # Read the existing JSON file content
-        async with aiofiles.open(file_path, mode='r') as file:
-            content = await file.read()
-            data = json.loads(content)
-        
-        # Append the new key-value pair
-        data[str(key)] = value
-        
-        # Write the updated JSON back to the file
-        async with aiofiles.open(file_path, mode='w') as file:
-            await file.write(json.dumps(data, indent=4))
-    
-    except FileNotFoundError:
-        # If the file does not exist, create it and add the key-value pair
-        data = {str(key): value}
-        async with aiofiles.open(file_path, mode='w') as file:
-            await file.write(json.dumps(data, indent=4))
-    except:
-        traceback.print_exc()
-
-async def load_user_data(file_path):
-    try:
-        async with aiofiles.open(file_path, 'r') as file:
-            user_data = json.loads(await file.read())
-    except FileNotFoundError:
-        user_data = {}
-    return user_data
+            return True
+        response_data = await response.json()
+        print(f'Status: {response.status}, Response: {response_data}')
+        return False

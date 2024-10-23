@@ -1,7 +1,6 @@
 discord.py
 pyTelegramBotAPI
-aiofiles
 aiohttp
-moviepy
-motor
 python-dotenv
+aiosqlite
+markdown

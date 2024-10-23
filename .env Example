@@ -1,4 +1,2 @@
-DCTOKEN = "Discord Bot Token"
-TGTOKEN = "Telegram Bot Token"
-MONGODB_URL = "YOUR MONGODB URL"
-MONGODB_NAME = "YOUR DATABASE NAME"
+DCTOKEN = "Your discord bot token here"
+TGTOKEN = "Your telegram bot token here"
