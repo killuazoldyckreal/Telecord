@@ -2,10 +2,9 @@ import aiosqlite
 import json
 
 class GuildData:
-    def __init__(self, guildid, code, tgadmin, groupid, invite, mutedchannelids, code_used, force_mute):
+    def __init__(self, guildid, code, groupid, invite, mutedchannelids, code_used, force_mute):
         self.guildid = guildid
         self.code = code
-        self.tgadmin = tgadmin
         self.groupid = groupid
         self.invite = invite
         self.mutedchannelids = mutedchannelids
@@ -87,7 +86,7 @@ class Database:
         await self.execute(query)
         await self.commit()
 
-    async def insertGuild(self, guildid: int, code:int = None, tgadmin:int = None, groupid: int = None, invite: str = None, mutedchannelids: list = None, code_used: bool = False, force_mute:bool = False):
+    async def insertGuild(self, guildid: int, code:int = None, groupid: int = None, invite: str = None, mutedchannelids: list = None, code_used: bool = False, force_mute:bool = False):
         """Insert a new guild into the database."""
         await self.ensure_connected()
         if mutedchannelids is None:
@@ -95,15 +94,15 @@ class Database:
 
         mutedchannelids_str = json.dumps(mutedchannelids)
         query = """
-        INSERT OR IGNORE INTO auth (guildid, code, tgadmin, groupid, invite, mutedchannelids, code_used, force_mute)
+        INSERT OR IGNORE INTO auth (guildid, code, groupid, invite, mutedchannelids, code_used, force_mute)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
-        await self.execute(query, (guildid, code, tgadmin, groupid, invite, mutedchannelids_str, code_used, force_mute))
+        await self.execute(query, (guildid, code, groupid, invite, mutedchannelids_str, code_used, force_mute))
         await self.commit()
-        data = GuildData(guildid, code, tgadmin, groupid, invite, mutedchannelids, code_used, force_mute)
+        data = GuildData(guildid, code, groupid, invite, mutedchannelids, code_used, force_mute)
         return data
 
-    async def updateGuild(self, guildid: int, code:int = None, tgadmin:int = None, groupid: int = None, invite: str = None, mutedchannelids: list = None, code_used: bool = None, force_mute:bool = None):
+    async def updateGuild(self, guildid: int, code:int = None, groupid: int = None, invite: str = None, mutedchannelids: list = None, code_used: bool = None, force_mute:bool = None):
         """Update guild information in the database."""
         await self.ensure_connected()
         updates = []
@@ -111,9 +110,6 @@ class Database:
         if code is not None:
             updates.append("code = ?")
             params.append(code)
-        if tgadmin is not None:
-            updates.append("tgadmin = ?")
-            params.append(tgadmin)
         if groupid is not None:
             updates.append("groupid = ?")
             params.append(groupid)
@@ -153,9 +149,9 @@ class Database:
         async with self.execute(query, (guild.id,)) as cursor:
             result = await cursor.fetchone()
             if result:
-                guildid, code, tgadmin, groupid, invite, mutedchannelids, code_used, force_mute = result
+                guildid, code, groupid, invite, mutedchannelids, code_used, force_mute = result
                 mutedchannelids = json.loads(mutedchannelids)
-                data = GuildData(guildid, code, tgadmin, groupid, invite, mutedchannelids, code_used, force_mute)
+                data = GuildData(guildid, code, groupid, invite, mutedchannelids, code_used, force_mute)
         return data
 
     async def insertPrivacy(self, userid, privacy:bool =False):

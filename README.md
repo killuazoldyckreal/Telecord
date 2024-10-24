@@ -25,13 +25,16 @@ To use Telecord, follow these steps:
 
 ## Environment Variables
 
-- Create a `.env` file in the root directory of the Telecord project.
+- Create a `.env` file in the root directory of the Telecord project(see [.env Example](.env%20Example) for reference).
    - Add the following variables to the `.env` file:
      ```
      DCTOKEN="Discord Bot Token"
      TGTOKEN="Telegram Bot Token"
      ```
-   
+- You can set custom Prefix & Embed color in `config.json`
+   - Color values are only acceptable in hexadecimal format like `0xff0000`
+   - You can convert hex color values like `#ff0000` by simply replacing `#` with `0x`
+
 ## Dependencies
 
 - [discord.py](https://pypi.org/project/discord.py/): Discord API wrapper for Python.

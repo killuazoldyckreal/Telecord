@@ -9,6 +9,7 @@ from telebot.async_telebot import AsyncTeleBot
 from telebot.types import ReplyParameters, LinkPreviewOptions
 from telebot import asyncio_filters
 from database import Database
+from setting import Config as config
 from helper import *
 from dotenv import load_dotenv
 
@@ -20,9 +21,10 @@ channels = {}
 
 class DiscordBot(commands.AutoShardedBot):
     def __init__(self):
-        super().__init__(command_prefix = "/", intents = Intents.all(), help_command= None)
+        super().__init__(command_prefix = config.prefix, intents = Intents.all(), help_command= None)
         self.telegram_bot = None
-        self.command_list = ["/help", "/info", "/link", "/unlink", "/mute", "/unmute", "/ping", "/privacy"]
+        clist = ["help", "info", "link", "unlink", "mute", "unmute", "ping", "privacy"]
+        self.command_list = [f"{config.prefix}{i}" for i in clist]
 
     async def setup_hook(self) -> None:
         self.db = Database("telecord.db")
@@ -81,7 +83,7 @@ class DiscordBot(commands.AutoShardedBot):
                 if not data:
                     return
                 channel_id, guild_id = data
-            embed = discord.Embed(title = message.from_user.first_name[:250], color=discord.Color.blue())
+            embed = discord.Embed(title = message.from_user.first_name[:250], color=config.color)
             if message.text:
                 embed_description+= (html_to_markdown(message.html_text)+"\n")
             elif message.caption:
@@ -262,12 +264,12 @@ class TelegramBot(AsyncTeleBot):
                         for channel in guild.text_channels:
                             permissions = channel.permissions_for(guild.me)
                             if permissions.view_channel and permissions.send_messages and permissions.read_message_history:
-                                await self.discord_bot.db.updateGuild(guildid, tgadmin=message.from_user.id, groupid=message.chat.id, invite= message.chat.invite_link, code_used=True)
+                                await self.discord_bot.db.updateGuild(guildid, groupid=message.chat.id, invite= message.chat.invite_link, code_used=True)
                                 await self.discord_bot.db.insertActivech(guildid, message.chat.id, channel.id)
                                 await self.send_message(message.chat.id, f"Successfully connected to {guild.name}!\nTo change current chatting channel use /changechannel command.")
                                 msg = await self.send_message(message.chat.id, f"You are currently chatting in #{channel.name}!")
                                 await self.pin_chat_message(message.chat.id, msg.message_id, disable_notification=True)
-                                embed = discord.Embed(title="Telegram Group successfully connected!", description=f"{guild.name} has successfully connected with `{message.chat.first_name}` Telegram Group.", color=discord.Color.green())
+                                embed = discord.Embed(title="Telegram Group successfully connected!", description=f"{guild.name} has successfully connected with `{message.chat.first_name}` Telegram Group.", color=config.success_color)
                                 embed.set_footer(text="Admins can disconnect Telegram anytime using /unlink command.")
                                 await channel.send(embed=embed)
                                 return
@@ -534,6 +536,11 @@ class TelegramBot(AsyncTeleBot):
         @self.callback_query_handler(func=lambda call: True)
         async def handle_query(call):
             data = call.data
+            inline_message = call.message
+            await self.edit_message_reply_markup(inline_message.chat.id, message_id=inline_message.message_id , reply_markup=None)
+            last_pinned_message = inline_message.chat.pinned_message
+            if last_pinned_message.from_user.username.lower()=="telecord_userbot":
+                await self.unpin_chat_message(inline_message.chat.id, message_id=last_pinned_message.message_id)
             query, guildid, timestamp = data.split()
             guildid = int(guildid)
             timestamp = int(timestamp)
@@ -585,18 +592,18 @@ async def unmute_command(ctx: commands.Context, channel: TextChannel = None):
         guild_data = await bot.db.getGuild(ctx.guild)
         if not guild_data or not guild_data.groupid:
             guild_data = await bot.db.insertGuild(ctx.guild.id)
-            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=config.error_color)
         else:
             if guild_data.force_mute:
-                embed = discord.Embed(title="Force Mute Activated!", description="<a:pending:1241031324119072789> Can't Unmute! Channel has been force muted by Telegram Admin.", color=discord.Color.orange())
+                embed = discord.Embed(title="Force Mute Activated!", description="<a:pending:1241031324119072789> Can't Unmute! Channel has been force muted by Telegram Admin.", color=config.error_color)
             else:
                 mutedchannelids = guild_data.mutedchannelids
                 if channel.id not in mutedchannelids:
-                    embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Unmuted!", color=discord.Color.green())
+                    embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Unmuted!", color=config.success_color)
                 else:
                     mutedchannelids.remove(channel.id)
                     await bot.db.updateGuild(ctx.guild.id, mutedchannelids=mutedchannelids)
-                    embed = discord.Embed(title="Channel Unmuted Successfully! <a:chk:1241031331756904498>", description = "Messages will now be forwarded to the connected Telegram Group", color=discord.Color.green())
+                    embed = discord.Embed(title="Channel Unmuted Successfully! <a:chk:1241031331756904498>", description = "Messages will now be forwarded to the connected Telegram Group", color=config.success_color)
         await ctx.send(embed=embed)
     except:
         traceback.print_exc()
@@ -611,31 +618,31 @@ async def mute_command(ctx: commands.Context, channel: TextChannel = None):
         guild_data = await bot.db.getGuild(ctx.guild)
         if not guild_data or not guild_data.groupid:
             guild_data = await bot.db.insertGuild(ctx.guild.id)
-            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=config.error_color)
         else:
             mutedchannelids = guild_data.mutedchannelids
             if channel.id in mutedchannelids:
-                embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Muted!", color=discord.Color.green())
+                embed = discord.Embed(description="<a:chk:1241031331756904498> Channel Already Muted!", color=config.success_color)
             else:
                 mutedchannelids.append(channel.id)
                 await bot.db.updateGuild(ctx.guild.id, mutedchannelids=mutedchannelids)
-                embed = discord.Embed(title="Channel Muted Successfully! <a:chk:1241031331756904498>", description = "Messages won't be forwarded to the connected Telegram Group.", color=discord.Color.green())
+                embed = discord.Embed(title="Channel Muted Successfully! <a:chk:1241031331756904498>", description = "Messages won't be forwarded to the connected Telegram Group.", color=config.success_color)
         await ctx.send(embed=embed)
     except:
         traceback.print_exc()
           
 @bot.hybrid_command(name="help", description="Show guide to how to get started.", with_app_command = True)
 async def send_bot_help(ctx: commands.Context):
-    embed = discord.Embed(title="Telecord Help Menu!", color=discord.Color.blue())
+    embed = discord.Embed(title="Telecord Help Menu!", color=config.color)
     embed.description = f"A Bot designed to facilitate communication between Discord and Telegram. It forwards messages from Telegram to Discord and vice versa."
-    embed.add_field(name="/help", value="Shows Telecord help menu", inline=False)
-    embed.add_field(name="/info", value="Show info about connected Telegram Group", inline=False)
-    embed.add_field(name="/link", value="Setup discord-telegram connection", inline=False)
-    embed.add_field(name="/unlink", value="Revoke discord-telegram connection", inline=False)
-    embed.add_field(name="/mute <channel>", value="Stop forwading messages of the channel", inline=False)
-    embed.add_field(name="/unmute <channel>", value="Starts forwading messages of the channel", inline=False)
-    embed.add_field(name="/ping", value="Checks bot latency with discord API", inline=False)
-    embed.add_field(name="/privacy <on/off>", value="Stop forwading your message to telegram", inline=False)
+    embed.add_field(name=f"{config.prefix}help", value="Shows Telecord help menu", inline=False)
+    embed.add_field(name=f"{config.prefix}info", value="Show info about connected Telegram Group", inline=False)
+    embed.add_field(name=f"{config.prefix}link", value="Setup discord-telegram connection", inline=False)
+    embed.add_field(name=f"{config.prefix}unlink", value="Revoke discord-telegram connection", inline=False)
+    embed.add_field(name=f"{config.prefix}mute <channel>", value="Stop forwading messages of the channel", inline=False)
+    embed.add_field(name=f"{config.prefix}unmute <channel>", value="Starts forwading messages of the channel", inline=False)
+    embed.add_field(name=f"{config.prefix}ping", value="Checks bot latency with discord API", inline=False)
+    embed.add_field(name=f"{config.prefix}privacy <on/off>", value="Stop forwading your message to telegram", inline=False)
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="info", description="Show info about connected Telegram Group", with_app_command = True)
@@ -644,10 +651,10 @@ async def info_command(ctx: commands.Context):
         guild_data = await bot.db.getGuild(ctx.guild)
         if not guild_data or not guild_data.groupid:
             guild_data = await bot.db.insertGuild(ctx.guild.id)
-            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=discord.Color.orange())
+            embed = discord.Embed(title="Telegram Group Not Found!", description="<a:pending:1241031324119072789> No Telegram Group is connected with Server currently.", color=config.error_color)
         else:
             chat = await bot.telegram_bot.get_chat(guild_data.groupid)
-            embed = discord.Embed(title="Telegram Group Info!", description="", color=discord.Color.blue())
+            embed = discord.Embed(title="Telegram Group Info!", description="", color=config.color)
             embed.add_field(name="Group name", value=chat.title, inline=False)
             embed.add_field(name="Type", value=chat.type, inline=False)
             description = chat.description if chat.description else "None"
@@ -666,12 +673,12 @@ async def link_command(ctx: commands.Context):
         if not guild_data:
             guild_data = await bot.db.insertGuild(ctx.guild.id)
         if guild_data.groupid:
-            embed = discord.Embed(title="Telegram Group already connected!", description="There's already a Telegram Group attached to your Server! Unlink it first to add another.", color=discord.Color.orange())
+            embed = discord.Embed(title="Telegram Group already connected!", description="There's already a Telegram Group attached to your Server! Unlink it first to add another.", color=config.error_color)
             
         else:
             code = int(int(time.time())+ctx.guild.id)
             await bot.db.updateGuild(ctx.guild.id, code=code)
-            embed = discord.Embed(title="Telegram Group integration Setup", description = "Follow these steps to link your Discord server with a Telegram group:", color=discord.Color.blue())
+            embed = discord.Embed(title="Telegram Group integration Setup", description = "Follow these steps to link your Discord server with a Telegram group:", color=config.color)
             embed.add_field(
                 name="1. Create a Telegram Group",
                 value="Go to Telegram and create a new **Group** where you'll add the bot.",
@@ -702,9 +709,9 @@ async def unlink_command(ctx: commands.Context):
         guild_data = await bot.db.getGuild(ctx.guild)
         if guild_data:
             guild_data = await bot.db.deleteGuild(ctx.guild.id)
-            embed = discord.Embed(title="Unlinked Successfully!", description="Your server has been unlinked from telegram group successfully.", color=discord.Color.green())
+            embed = discord.Embed(title="Unlinked Successfully!", description="Your server has been unlinked from telegram group successfully.", color=config.success_color)
         else:
-            embed = discord.Embed(title="No Links Found!", description = "Your server isn't connected to any telegram group", color=discord.Color.orange())
+            embed = discord.Embed(title="No Links Found!", description = "Your server isn't connected to any telegram group", color=config.error_color)
         await ctx.send(embed=embed)
     except:
         traceback.print_exc()
@@ -732,11 +739,33 @@ async def privacy_command(ctx: commands.Context):
         p = "on" if new_privacy else "off"
         w = "won't" if new_privacy else "will"
         await bot.db.updatePrivacy(ctx.author.id, privacy=new_privacy)
-        embed = discord.Embed(title=f"Privacy mode turned {p}!", description=f"<a:chk:1241031331756904498> Your messages {w} be forwaded to Telegram.", color=discord.Color.green())
+        embed = discord.Embed(title=f"Privacy mode turned {p}!", description=f"<a:chk:1241031331756904498> Your messages {w} be forwaded to Telegram.", color=config.success_color)
         await ctx.send(embed=embed)
     except:
         traceback.print_exc()
-        
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(title="Permission Denied", description="You lack the required permissions to use this command.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.BotMissingPermissions):
+        embed = discord.Embed(title="Bot Missing Permissions", description="The bot doesn't have the necessary permissions to execute this command.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    elif isinstance(error, commands.BadArgument):
+        embed = discord.Embed(title="Invalid Argument", description="The arguments provided are invalid. Check the usage and try again.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.CommandInvokeError):
+        embed = discord.Embed(title="Command Error", description="An error occurred while executing the command. Please try again later.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+        traceback.print_exc()
+    else:
+        embed = discord.Embed(title="Error", description="An unexpected error occurred.", color=discord.Color.red())
+        await ctx.send(embed=embed)
+        traceback.print_exc()
+
 class Telecord:
     def __init__(self):
         self.discord_bot = bot
