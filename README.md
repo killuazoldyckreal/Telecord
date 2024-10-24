@@ -46,7 +46,7 @@ To use Telecord, follow these steps:
 
 ## Usage
 
-Once Telecord is up and running, you can interact with it using various commands:
+Telecord must have Admin permissions in Telegram Group for functioning. Once Telecord is up and running, you can interact with it using various commands:
 
 ### Telegram-side commands
 - `/start`: Starts the Telecord bot
