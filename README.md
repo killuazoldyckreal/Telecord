@@ -36,7 +36,6 @@ To use Telecord, follow these steps:
 
 - [discord.py](https://pypi.org/project/discord.py/): Discord API wrapper for Python.
 - [pyTelegramBotAPI](https://pypi.org/project/pyTelegramBotAPI/): Telegram Bot API wrapper for Python.
-- [aiofiles](https://pypi.org/project/aiofiles/): Python library for handling local disk files in asyncio applications.
 - [aiohttp](https://pypi.org/project/aiohttp/): Asynchronous HTTP Client/Server for asyncio and Python.
 - [python-dotenv](https://pypi.org/project/python-dotenv/): Read environment variables from `.env` file.
 - [Markdown](https://pypi.org/project/Markdown/): This is a Python implementation of John Gruber's Markdown.
