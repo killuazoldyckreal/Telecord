@@ -539,7 +539,7 @@ class TelegramBot(AsyncTeleBot):
             inline_message = call.message
             await self.edit_message_reply_markup(inline_message.chat.id, message_id=inline_message.message_id , reply_markup=None)
             last_pinned_message = inline_message.chat.pinned_message
-            if last_pinned_message.from_user.username.lower()=="telecord_userbot":
+            if last_pinned_message and last_pinned_message.from_user.username.lower()=="telecord_userbot":
                 await self.unpin_chat_message(inline_message.chat.id, message_id=last_pinned_message.message_id)
             query, guildid, timestamp = data.split()
             guildid = int(guildid)
