@@ -31,7 +31,7 @@ To use Telecord, follow these steps:
      DCTOKEN="Discord Bot Token"
      TGTOKEN="Telegram Bot Token"
      ```
-- You can set custom Prefix & Embed color in `config.json`
+- You can set custom Prefix & Embed color in [config.json](config.json)
    - Color values are only acceptable in hexadecimal format like `0xff0000`
    - You can convert hex color values like `#ff0000` by simply replacing `#` with `0x`
 
